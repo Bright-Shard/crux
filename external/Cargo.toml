@@ -1,0 +1,16 @@
+[package]
+name = "external"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hashbrown = { version = "0.15", default-features = false, features = [
+	"default-hasher",
+	"inline-more",
+	"nightly",
+] }
+
+[target.'cfg(target_family = "unix")'.dependencies]
+# libc constants can change from platform to platform, so instead of trying to
+# track those ourselves we let the Rust team handle it
+libc = { version = "0.2", default-features = false }

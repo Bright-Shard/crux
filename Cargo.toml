@@ -1,0 +1,17 @@
+[package]
+name = "crux"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = ["external", "tests"]
+
+[dependencies]
+external.path = "external"
+
+[features]
+default = []
+# Enables additional memory safety checks in various unsafe functions.
+safety-checks = []
+# Registers crux::mem::OsAllocator as the global allocator.
+global-os-alloc = []
