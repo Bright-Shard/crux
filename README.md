@@ -6,6 +6,8 @@ Note that Crux does not re-implement language primitives (such as `derive`, `Clo
 
 Crux is largely designed to work in the presence of consumer operating systems, so it takes advantage of features like virtual memory and process/thread APIs. Because of this it may not be very friendly to embedded programming. In the future Crux may introduce more feature flags to be more modular, so additional platforms can be supported with a subset of Crux's API.
 
+Currently, Crux supports Unix operating systems, with Windows support being work-in-progress.
+
 
 
 # Motivation

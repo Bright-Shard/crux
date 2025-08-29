@@ -48,6 +48,7 @@ pub mod essential {
 		convert::Infallible, // TODO does this belong here?
 		convert::{From, Into},
 		default::Default,
+		matches,
 		option::Option::{self, None, Some},
 		panic,
 		prelude::rust_2024::derive,

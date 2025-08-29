@@ -1,8 +1,126 @@
 //! Simple, efficient CLI parsing library.
+//!
+//! Crux's CLI parser is intended to be extremely simple to use (most of your
+//! logic can occur within a single match statement!), efficient (the library
+//! is zero-copy, and your CLI app can be too), while still being scalable (you
+//! have full access to the parser's internal details if you need to work around
+//! any limitations).
+//!
+//! Crux's CLI library is somewhat limited compared to other CLI libraries:
+//! - It does not have automatic help message generation. You are responsible
+//!   for that.
+//! - It only works with UTF-8 strings. This is largely just because its API is
+//!   built around a match statement, and you can't match on `OsStr`/`OsString`.
+//!
+//!
+//! # Language
+//!
+//! To avoid confusion, Crux uses specific terms in the context of CLI parsing:
+//! - 'flag': One option passed by the user, prefixed with one or two dashes,
+//!   optionally with an assignment at the end (e.g. `-r`, `--release`,
+//!   `--profile=release`).
+//! - 'argument': A value passed with a flag (e.g. the `release` in
+//!   `--profile=release` or `--profile release`).
+//! - 'assignment': When the user provides an argument to a flag with the `=`
+//!   character. So, `--profile=release` is an assignment, while `--profile
+//!   release` is not. This allows distinguishing between arguments.
+//!
+//!
+//! # Usage
+//!
+//! Crux's CLI parser is centered around the [`CliParser`] trait. The idea is
+//! that you store all your CLI options in a struct, implement [`CliParser`] for
+//! that struct, and then update the struct based on the various flags passed by
+//! the user. You can do all of this from a single match statement:
+//!
+//! ```rs
+//! use crux::term::cli::*;
+//!
+//! struct MyCliApp<'a> {
+//!     name: Option<&'a str>,
+//!     verbosity: u8
+//! }
+//! impl<'a> CliParser<'a> for MyCliApp<'a> {
+//!     fn parse(
+//!         &mut self,
+//!         flag: &'a str,
+//!         class: FlagClass<'a>,
+//!         ctx: &mut CliParsingCtx<'a, Self>
+//!    ) -> ParseResult {
+//!         match flag {
+//!             "n" | "name" => {
+//!                 // The `ctx` argument allows you to read an argument for
+//!                 // your flag. It also stores all of the data used by Crux's
+//!                 // parser, so you can work with that if needed.
+//!                 self.name = ctx.next_argument(self).expect("Must provide a name for '--name'");
+//!             }
+//!             "v" | "verbose" => self.verbosity += 1,
+//!             // Since you never tell Crux what your CLI's arguments are,
+//!             // you have to return whether or not you successfully parsed
+//!             // the given string as a flag.
+//!             // This allows Crux to distinguish between flags and arguments
+//!             // in some context-sensitive scenarios.
+//!             //
+//!             // Note that you should always return `NotRecognised` instead of
+//!             // erroring when you fail to parse a flag. Crux may call your
+//!             // parse function to check if something is a flag or argument
+//!             // before continuing, in which case you should not error, as
+//!             // the value may be an argument Crux is disambiguating and not
+//!             // a bad flag passed by the user.
+//!             _ => return ParseResult::NotRecognised
+//!         }
+//!
+//!         ParseResult::Recognised
+//!    }
+//!
+//!    // The CLI parser is also what handles any errors that occur; see
+//!    // `ParseError`.
+//!    fn error(&mut self, error: ParseError<'a>) {
+//!        panic!("An error occurred! {error:?}")
+//!    }
+//! }
+//! ```
+//!
+//! Crux requires single-character flags to only be prefixed with one dash, and
+//! for multi-character flags to be prefixed with two dashes. This makes your
+//! program conformant with standard CLI flag patterns.
+//!
+//! Once you have implemented [`CliParser`] for your CLI struct, simply pass it
+//! to the [`parse`] function along with the actual CLI arguments to parse.
+//!
+//!
+//! # Capabilities
+//!
+//! Crux's CLI parser can successfully parse:
+//! - Short and long flags (`-r`, `--release`)
+//! - Arguments, including assignments (`--profile release`,
+//!   `--profile=release`, `-p=release`, `-p release`)
+//! - Combined short flags (`-rp release`, `-rp=release`)
 
-use external::core::matches;
+use crate::lang::PhantomData;
 
-use crate::{lang::PhantomData, prelude::*};
+/// A type that parses CLI arguments. See the [module-level docs] for more info.
+///
+/// [module-level docs]: crate::term::cli
+pub trait CliParser<'a>: Sized {
+	fn parse(
+		&mut self,
+		flag: &'a str,
+		class: FlagClass<'a>,
+		ctx: &mut CliParsingCtx<'a, Self>,
+	) -> ParseResult;
+	fn error(&mut self, error: ParseError<'a>);
+}
+
+/// Returned by [`CliParser::parse`] to communicate whether parsing succeeded or
+/// not.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ParseResult {
+	/// The given flag was recognised as a valid flag.
+	Recognised,
+	/// The given flag was not recognised.
+	NotRecognised,
+}
 
 /// An error that occurred while parsing CLI arguments.
 #[derive(Debug)]
@@ -15,6 +133,12 @@ pub enum ParseError<'a> {
 	/// The user passed an argument that was only dashes (e.g. `-`, `--`).
 	NoFlag { num_dashes: u8 },
 }
+
+//
+//
+// Parser
+//
+//
 
 /// Parses the given slice of CLI arguments with the given [`CliParser`].
 pub fn parse<'a, P>(args: &'a [&'a str], parser: &mut P)
@@ -173,6 +297,88 @@ pub enum CliParsingStatus<'a> {
 	PeekedAsValue(Option<&'a str>),
 }
 
+//
+//
+// ctx
+//
+//
+
+/// Context passed to a [`CliParser::parse`] to make parsing more flexible.
+pub struct CliParsingCtx<'a, P: CliParser<'a>> {
+	// TODO optimise for cache size
+	pub args: &'a [&'a str],
+	pub idx: usize,
+	pub status: CliParsingStatus<'a>,
+	pub _ph: PhantomData<P>,
+}
+impl<'a, P: CliParser<'a>> CliParsingCtx<'a, P> {
+	pub fn next_argument(&mut self, parser: &mut P) -> Option<&'a str> {
+		match self.status {
+			CliParsingStatus::Used => {
+				self.idx += 1;
+				let flag_or_arg = *self.args.get(self.idx)?;
+				let class = classify(flag_or_arg);
+				let val = match class {
+					FlagClass::Long { flag: _ }
+					| FlagClass::LongAssigned {
+						flag: _,
+						equals_idx: _,
+					}
+					| FlagClass::Short { flag: _ }
+					| FlagClass::ShortAssigned {
+						flag: _,
+						equals_idx: _,
+					} => None,
+					FlagClass::SubcommandOrArgumentAssigned { raw, equals_idx } => {
+						match parser.parse(&raw[..equals_idx], class, self) {
+							ParseResult::NotRecognised => Some(raw),
+							ParseResult::Recognised => None,
+						}
+					}
+					FlagClass::SubcommandOrArgument { raw } => {
+						match parser.parse(raw, class, self) {
+							ParseResult::NotRecognised => Some(raw),
+							ParseResult::Recognised => None,
+						}
+					}
+				};
+				self.status = CliParsingStatus::PeekedAsValue(val);
+				val
+			}
+			CliParsingStatus::UsedBeforeN(idx) => {
+				if idx + 1 == self.args[self.idx].len() {
+					self.status = CliParsingStatus::Used;
+					self.next_argument(parser)
+				} else {
+					None
+				}
+			}
+			CliParsingStatus::StoppedAtEquals(equals_idx) => {
+				let res = self.args[self.idx].get(equals_idx + 1..).unwrap_or("");
+				self.status = CliParsingStatus::PeekedAsValue(Some(res));
+				Some(res)
+			}
+			CliParsingStatus::PeekedAsValue(result) => result,
+			CliParsingStatus::UsedBeforeNEquals(idx) => {
+				let arg = &self.args[self.idx][1..];
+				if arg.as_bytes()[idx] == b'=' {
+					let res = arg.get(idx + 1..).unwrap_or("");
+					self.status = CliParsingStatus::PeekedAsValue(Some(res));
+					Some(res)
+				} else {
+					None
+				}
+			}
+		}
+	}
+}
+
+//
+//
+// Flag classes
+//
+//
+
 /// Sorts command-line flags into various classes to make them easier to parse.
 #[derive(Debug, PartialEq, Eq)]
 pub enum FlagClass<'a> {
@@ -324,89 +530,11 @@ pub fn classify<'a>(arg: &'a str) -> FlagClass<'a> {
 	}
 }
 
-/// Context passed to a [`CliParser::parse`] to make parsing more flexible.
-pub struct CliParsingCtx<'a, P: CliParser<'a>> {
-	// TODO optimise for cache size
-	pub args: &'a [&'a str],
-	pub idx: usize,
-	pub status: CliParsingStatus<'a>,
-	pub _ph: PhantomData<P>,
-}
-impl<'a, P: CliParser<'a>> CliParsingCtx<'a, P> {
-	pub fn next_argument(&mut self, parser: &mut P) -> Option<&'a str> {
-		match self.status {
-			CliParsingStatus::Used => {
-				self.idx += 1;
-				let flag_or_arg = *self.args.get(self.idx)?;
-				let class = classify(flag_or_arg);
-				let val = match class {
-					FlagClass::Long { flag: _ }
-					| FlagClass::LongAssigned {
-						flag: _,
-						equals_idx: _,
-					}
-					| FlagClass::Short { flag: _ }
-					| FlagClass::ShortAssigned {
-						flag: _,
-						equals_idx: _,
-					} => None,
-					FlagClass::SubcommandOrArgumentAssigned { raw, equals_idx } => {
-						match parser.parse(&raw[..equals_idx], class, self) {
-							ParseResult::NotRecognised => Some(raw),
-							ParseResult::Recognised => None,
-						}
-					}
-					FlagClass::SubcommandOrArgument { raw } => {
-						match parser.parse(raw, class, self) {
-							ParseResult::NotRecognised => Some(raw),
-							ParseResult::Recognised => None,
-						}
-					}
-				};
-				self.status = CliParsingStatus::PeekedAsValue(val);
-				val
-			}
-			CliParsingStatus::UsedBeforeN(_) => None,
-			CliParsingStatus::StoppedAtEquals(equals_idx) => {
-				let res = self.args[self.idx].get(equals_idx + 1..).unwrap_or("");
-				self.status = CliParsingStatus::PeekedAsValue(Some(res));
-				Some(res)
-			}
-			CliParsingStatus::PeekedAsValue(result) => result,
-			CliParsingStatus::UsedBeforeNEquals(idx) => {
-				let arg = &self.args[self.idx][1..];
-				if arg.as_bytes()[idx] == b'=' {
-					let res = arg.get(idx + 1..).unwrap_or("");
-					self.status = CliParsingStatus::PeekedAsValue(Some(res));
-					Some(res)
-				} else {
-					None
-				}
-			}
-		}
-	}
-}
-
-/// Returned by [`CliParser::parse`] to communicate whether parsing succeeded or
-/// not.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum ParseResult {
-	/// The given flag was recognised as a valid flag.
-	Recognised,
-	/// The given flag was not recognised.
-	NotRecognised,
-}
-
-/// A type that parses CLI arguments.
-pub trait CliParser<'a>: Sized {
-	fn parse(
-		&mut self,
-		flag: &'a str,
-		class: FlagClass<'a>,
-		ctx: &mut CliParsingCtx<'a, Self>,
-	) -> ParseResult;
-	fn error(&mut self, error: ParseError<'a>);
-}
+//
+//
+// Tests
+//
+//
 
 #[cfg(test)]
 mod tests {
@@ -663,6 +791,14 @@ mod tests {
 			},
 			Case {
 				flags: &["-rp=my-profile"],
+				expected: MyCli {
+					cmd: Command::Run,
+					profile: Some("my-profile"),
+					verbosity: 0,
+				},
+			},
+			Case {
+				flags: &["-rp", "my-profile"],
 				expected: MyCli {
 					cmd: Command::Run,
 					profile: Some("my-profile"),

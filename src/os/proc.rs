@@ -3,6 +3,7 @@
 use crate::{
 	ffi::{CStr, c_char},
 	os,
+	text::FormatArgs,
 };
 
 /// Halts the current process immediately.
@@ -48,6 +49,25 @@ pub fn write_stdout(text: &[u8]) {
 	#[cfg(not(supported_os))]
 	compile_error!("unimplemented on this operating system");
 }
+pub fn write_stdout_fmt(args: FormatArgs) {
+	#[cfg(unix)]
+	{
+		use crate::{
+			io::Writer,
+			os::unix::{FileDescriptor, FileWriter},
+		};
+
+		unsafe { FileWriter::new(FileDescriptor::STDOUT) }
+			.write_fmt(args)
+			.unwrap()
+	}
+	#[cfg(windows)]
+	{
+		compile_error!("todo")
+	}
+	#[cfg(not(supported_os))]
+	compile_error!("unimplemented on this operating system");
+}
 
 /// Prints the string or format string to stdout. Accepts the same arguments as
 /// [`format`].
@@ -56,10 +76,10 @@ pub fn write_stdout(text: &[u8]) {
 #[macro_export]
 macro_rules! print {
 	($str:literal) => {
-		$crate::os::proc::write_stdout($str.as_bytes())
+		$crate::os::proc::write_stdout_fmt($crate::text::format_args!($str))
 	};
 	($str:literal, $($arg:expr),*) => {
-		$crate::os::proc::write_stdout($crate::text::format!($str, $($arg),*).as_bytes())
+		$crate::os::proc::write_stdout_fmt($crate::text::format_args!($str, $($arg),*))
 	};
 }
 pub use print;
@@ -71,10 +91,10 @@ pub use print;
 #[macro_export]
 macro_rules! println {
 	($str:literal) => {
-		$crate::os::proc::write_stdout($crate::text::concat!($str, "\n").as_bytes())
+		$crate::os::proc::write_stdout_fmt($crate::text::format_args!($crate::text::concat!($str, "\n")))
 	};
 	($str:literal, $($arg:expr),*) => {
-		$crate::os::proc::write_stdout($crate::text::format!($crate::text::concat!($str, "\n"), $($arg),*).as_bytes())
+		$crate::os::proc::write_stdout_fmt($crate::text::format_args!($crate::text::concat!($str, "\n"), $($arg),*))
 	};
 }
 pub use println;

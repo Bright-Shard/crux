@@ -47,7 +47,8 @@ pub mod prelude {
 			AsyncFn, AsyncFnMut, AsyncFnOnce, Clone, Copy, Default, Deref, DerefMut, Drop, Eq, Err,
 			Fn, FnMut, FnOnce, From, Into, IntoIterator, Iterator, ManuallyDrop, MaybeUninit,
 			NonNull, NonNullConst, None, Ok, Option, Ord, PartialEq, PartialOrd, Result, Send,
-			Sized, Some, Sync, derive, drop, panic, todo, transmute, transmute_copy, unreachable,
+			Sized, Some, Sync, derive, drop, matches, panic, todo, transmute, transmute_copy,
+			unreachable,
 		},
 		os::{
 			mem::{AllocError, Allocator, ArenaAllocator, GlobalAllocator, MemoryAmount},
@@ -63,20 +64,10 @@ pub mod prelude {
 pub mod io {
 	//! General-purpose utilities for transferring data.
 
-	/// Represents a data source that bytes can be transferred into.
-	pub trait Writer {
-		/// Some data sources may need to be "flushed" after being written to
-		/// for the data to actually be transferred.
-		///
-		/// For example, data written to `stdout` on Unix is not actually
-		/// written until either a newline is written or `stdout` is manually
-		/// flushed. Therefore, this boolean would be true for `stdout` on
-		/// Unix.
-		///
-		/// This should be set to true if there's any case where data may not be
-		/// written until a flush, even if the flush is unlikely to be needed.
-		const MAY_NEED_FLUSH: bool;
+	use crate::text::FormatArgs;
 
+	/// Represents a data source that bytes can be transferred into.
+	pub trait Writer: Sized {
 		/// An error that occurred while using this writer.
 		type Error: Debug + PartialEq + Eq;
 
@@ -97,23 +88,53 @@ pub mod io {
 				written += self.write(&bytes[written..])?;
 			}
 		}
+		/// Write formatted text (e.g. text generated with [`format_args`]) to
+		/// this writer.
+		///
+		/// Note that formatting is implemented in the Rust compiler, and we do
+		/// not get to control its error handling, so this method can't return a
+		/// nice error type like the other write methods.
+		///
+		/// [`format_args`]: crate::text::format_args
+		fn write_fmt(&mut self, args: FormatArgs) -> Result<(), ()> {
+			external::core::fmt::write(&mut FmtWriter(self), args).map_err(|_| ())
+		}
 		/// Some data sources need to be "flushed" for written bytes to actually
 		/// be transferred. This method would flush the data source so all
 		/// written bytes do in fact get transferred.
 		fn flush(&mut self) -> Result<(), Self::Error>;
 	}
 
+	pub struct FmtWriter<'a>(&'a mut dyn AnyWriter);
+	impl external::core::fmt::Write for FmtWriter<'_> {
+		fn write_str(&mut self, s: &str) -> external::core::fmt::Result {
+			self.0
+				.write_all(s.as_bytes())
+				.map_err(|_| external::core::fmt::Error)
+		}
+	}
+
 	/// A type-erased version of [`Writer`]. This trait is automatically
 	/// implemented for all types that implement [`Writer`].
-	pub trait AnyWriter: Writer {
-		/// See [`Writer::MAY_NEED_FLUSH`].
-		fn may_need_flush(&self) -> bool;
+	pub trait AnyWriter {
 		/// Transfer bytes into this writer. Bytes will be copied into the
 		/// writer's data source.
 		///
 		/// Unlike [`Writer::write`], this trait is typed-erase and therefore
 		/// does not store a specific error type, so errors are opaque.
 		fn write(&mut self, bytes: &[u8]) -> Result<usize, ()>;
+		/// Calls [`AnyWriter::write`] continuously until all of the give
+		/// `bytes` have been transferred to this writer.
+		///
+		/// Unlike [`Writer::write_all`], this trait is typed-erase and
+		/// therefore does not store a specific error type, so errors are
+		/// opaque.
+		fn write_all(&mut self, bytes: &[u8]) -> Result<(), ()>;
+		/// Write formatted text (e.g. text generated with [`format_args`]) to
+		/// this writer.
+		///
+		/// [`format_args`]: crate::text::format_args
+		fn write_fmt(&mut self, args: FormatArgs) -> Result<(), ()>;
 		/// Some data sources need to be "flushed" for written bytes to actually
 		/// be transferred. This method would flush the data source so all
 		/// written bytes do in fact get transferred.
@@ -126,11 +147,14 @@ pub mod io {
 	where
 		W: Writer,
 	{
-		fn may_need_flush(&self) -> bool {
-			W::MAY_NEED_FLUSH
-		}
 		fn write(&mut self, bytes: &[u8]) -> Result<usize, ()> {
 			<Self as Writer>::write(self, bytes).map_err(|_| ())
+		}
+		fn write_all(&mut self, bytes: &[u8]) -> Result<(), ()> {
+			<Self as Writer>::write_all(self, bytes).map_err(|_| ())
+		}
+		fn write_fmt(&mut self, args: FormatArgs) -> Result<(), ()> {
+			<Self as Writer>::write_fmt(self, args)
 		}
 		fn flush(&mut self) -> Result<(), ()> {
 			<Self as Writer>::flush(self).map_err(|_| ())
@@ -147,7 +171,7 @@ pub mod text {
 		core::{
 			concat,
 			ffi::CStr,
-			fmt::{Debug, Display, Write as TextWrite},
+			fmt::{Arguments as FormatArgs, Debug, Display, Write as TextWrite},
 			format_args, stringify,
 		},
 	};

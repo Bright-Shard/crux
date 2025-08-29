@@ -58,7 +58,6 @@ pub mod unix {
 		}
 	}
 	impl Writer for FileWriter {
-		const MAY_NEED_FLUSH: bool = true;
 		type Error = (); // TODO
 
 		fn write(&mut self, bytes: &[u8]) -> Result<usize, Self::Error> {

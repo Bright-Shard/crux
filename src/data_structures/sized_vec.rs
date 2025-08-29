@@ -298,8 +298,6 @@ impl<T, S: IndexSize, A: Allocator> Extend<T> for SizedVec<T, S, A> {
 }
 
 impl<S: IndexSize, A: Allocator> Writer for SizedVec<u8, S, A> {
-	const MAY_NEED_FLUSH: bool = false;
-
 	type Error = SizedVecGrowthError;
 
 	/// Copies `bytes` into the vector.
