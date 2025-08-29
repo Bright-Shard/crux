@@ -10,6 +10,8 @@ jobs:
       steps:
          - name: Checkout
            uses: actions/checkout@v4
+         - name: Install Rust Nightly
+           run: rustup default nightly && rustup update nightly
          - name: Cargo Doc
            run: cargo doc --workspace --document-private-items
 

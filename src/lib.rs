@@ -28,10 +28,6 @@ pub mod test;
 #[doc(hidden)] // prevent rust-analyzer from importing from external::core
 pub use external;
 
-#[allow(unused_imports)] // why
-#[prelude_import]
-use prelude::*;
-
 pub mod prelude {
 	//! Exports most useful types/functions in Crux that are unlikely to collide
 	//! with the names of existing types/functions.
@@ -60,6 +56,10 @@ pub mod prelude {
 		text::{CString, Debug, String},
 	};
 }
+
+#[allow(unused_imports)]
+#[prelude_import]
+use prelude::*;
 
 pub mod io {
 	//! General-purpose utilities for transferring data.
