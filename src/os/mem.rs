@@ -1,4 +1,4 @@
-//! Items for working directly with memory, allocations, and pointers.
+//! Items for working directly with memory and allocations.
 
 use crate::{external::libc, lang::*, os};
 
@@ -14,12 +14,6 @@ pub use external::{
 		alloc::{AllocError, Allocator, GlobalAlloc, Layout, LayoutError},
 		mem::{replace, swap, take, zeroed},
 		prelude::rust_2024::global_allocator,
-		ptr::{
-			NonNull, addr_of, addr_of_mut, copy, copy_nonoverlapping, dangling as dangling_ptr,
-			dangling_mut as dangling_ptr_mut, drop_in_place, null as null_ptr,
-			null_mut as null_ptr_mut, replace as replace_ptr, slice_from_raw_parts,
-			slice_from_raw_parts_mut, swap as swap_ptr, swap_nonoverlapping,
-		},
 	},
 };
 
@@ -73,7 +67,7 @@ pub use external::{
 /// Creating this structure through safe APIs is safe. Creating this structure
 /// through unsafe APIs or by filling the fields manually is unsafe.
 ///
-/// [`ArenaVec`]: crate::arena_vec::ArenaVec
+/// [`ArenaVec`]: crate::data_structures::ArenaVec
 #[derive(Clone, Copy)]
 pub struct ReservedMemory {
 	/// A pointer to the first byte of the reserved memory.
@@ -475,6 +469,8 @@ impl ArenaAllocator {
 	///
 	/// The caller is also responsible for making sure objects after the
 	/// checkpoint were properly dropped.
+	///
+	/// [`checkpoint`]: Self::checkpoint
 	pub unsafe fn restore_checkpoint(&self, checkpoint: ArenaCheckpoint) {
 		self.used.set(checkpoint.0);
 	}
@@ -588,7 +584,7 @@ impl Drop for ArenaAllocator {
 
 /// The size of a single page of memory on the current machine.
 pub fn page_size() -> usize {
-	crate::runtime::info().page_size
+	crate::rt::info().page_size
 }
 
 mod memory_amount {
@@ -693,48 +689,3 @@ mod memory_amount {
 	}
 }
 pub use memory_amount::MemoryAmount;
-
-/// [`NonNull`], but with a const pointer instead of a mutable pointer.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct NonNullConst<T: ?Sized>(*const T);
-impl<T: ?Sized> NonNullConst<T> {
-	pub const fn new(ptr: *const T) -> Option<Self> {
-		if ptr.is_null() { None } else { Some(Self(ptr)) }
-	}
-	/// Create a [`NewNullConst`] without checking if the given pointer is null
-	/// or not.
-	///
-	///
-	/// # Safety
-	///
-	/// The caller must guarantee the given pointer is not null
-	pub const unsafe fn new_unchecked(ptr: *const T) -> Self {
-		Self(ptr)
-	}
-	pub const fn as_ptr(self) -> *const T {
-		self.0
-	}
-	/// Converts this pointer to a reference.
-	///
-	///
-	/// # Safety
-	///
-	/// This has all the safety implications of a normal pointer dereference.
-	/// The caller is responsible for making sure the pointer is valid and lives
-	/// at least as long as the lifetime of the produced reference.
-	pub const unsafe fn as_ref<'a>(self) -> &'a T {
-		unsafe { &*self.0 }
-	}
-	pub const fn cast<U>(self) -> NonNullConst<U> {
-		NonNullConst(self.0.cast())
-	}
-	/// Convert this immutable pointer to a mutable pointer.
-	///
-	///
-	/// # Safety
-	///
-	/// The caller must ensure they can safely mutate the data at this pointer.
-	pub const unsafe fn cast_mut(self) -> NonNull<T> {
-		unsafe { NonNull::new_unchecked(self.0.cast_mut()) }
-	}
-}

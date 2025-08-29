@@ -2,8 +2,11 @@
 
 use crate::{
 	lang::{Add, AddAssign, Copy, Div, DivAssign, Mul, MulAssign, Ord, Sized, Sub, SubAssign},
-	string::{Debug, Display},
+	text::{Debug, Display},
 };
+
+#[doc(inline)]
+pub use crate::external::core::num::NonZero;
 
 /// Abstracts over all of Rust's integer types, allowing you to create
 /// functions that accept arbitrarily-sized integers.
@@ -40,6 +43,11 @@ pub const trait Integer:
 	fn saturating_sub(self, rhs: Self) -> Self;
 	fn saturating_div(self, rhs: Self) -> Self;
 	fn saturating_mul(self, rhs: Self) -> Self;
+
+	fn checked_add(self, rhs: Self) -> Option<Self>;
+	fn checked_sub(self, rhs: Self) -> Option<Self>;
+	fn checked_div(self, rhs: Self) -> Option<Self>;
+	fn checked_mul(self, rhs: Self) -> Option<Self>;
 }
 
 macro_rules! impl_integer {
@@ -70,6 +78,19 @@ macro_rules! impl_integer {
 			}
 			fn saturating_mul(self, rhs: Self) -> Self {
 				self.saturating_mul(rhs)
+			}
+
+			fn checked_add(self, rhs: Self) -> Option<Self> {
+				self.checked_add(rhs)
+			}
+			fn checked_sub(self, rhs: Self) -> Option<Self> {
+				self.checked_sub(rhs)
+			}
+			fn checked_div(self, rhs: Self) -> Option<Self> {
+				self.checked_div(rhs)
+			}
+			fn checked_mul(self, rhs: Self) -> Option<Self> {
+				self.checked_mul(rhs)
 			}
 		})*
 	};

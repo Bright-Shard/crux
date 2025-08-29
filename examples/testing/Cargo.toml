@@ -1,0 +1,10 @@
+[package]
+name = "testing"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crux = { workspace = true, features = [
+	"global-os-allocator",
+	"logging-panic-handler",
+] }

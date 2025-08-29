@@ -1,8 +1,10 @@
 # Crux
 
-Crux is a replacement for Rust's standard and core libraries, designed for performant and data-oriented software. It is largely made for a compiler, programming language, and runtime I'm developing (called Shard).
+Crux is a replacement for Rust's standard and core libraries, designed for performant and data-oriented software. It is largely made for a compiler, programming language, and runtime I'm developing (called Shard); in general, though, it's kind of a personalised take on Rust that I may use for my projects.
 
 Note that Crux does not re-implement language primitives (such as `derive`, `Clone`, or `Option`). Instead it re-exports these from Rust's `core` library.
+
+Crux is largely designed to work in the presence of consumer operating systems, so it takes advantage of features like virtual memory and process/thread APIs. Because of this it may not be very friendly to embedded programming. In the future Crux may introduce more feature flags to be more modular, so additional platforms can be supported with a subset of Crux's API.
 
 
 
@@ -16,7 +18,9 @@ Rust's standard library is small and somewhat restrictive:
 	- The [`Allocator` trait](https://doc.rust-lang.org/stable/std/alloc/trait.Allocator.html) is unstable
 	- [`HashMap`](https://doc.rust-lang.org/stable/std/collections/struct.HashMap.html) does not have a customizable allocator, despite [the original implementation in Hashbrown supporting it](https://docs.rs/hashbrown/latest/hashbrown/struct.HashMap.html)
 
-Crux embraces nightly Rust and exposes additional types/functions for performance, fine-grained memory control, and data-oriented programming.
+Crux embraces nightly Rust and exposes additional types/functions for performance, fine-grained memory control, direct access to operating system APIs, and data-oriented programming.
+
+In addition to actual reasons for making this library, working with lower-level operating system APIs is teaching me a lot about processes, threads, synchronization, etc.
 
 
 
@@ -62,4 +66,4 @@ compile_error!("unimplemented on this operating system");
 
 You'll need to go through and add support for your chosen operating system for each of those functions. Then add the new OS to the `supported_os` cfg alias in `build.rs`, which will get rid of the `compile_error`s. Finally, run all of Crux's unit tests to make sure everything works as intended.
 
-Currently, all of Crux's platform-specific code lies in `crux::os` (for OS APIs) or Crux's virtual memory API in `crux::mem`.
+Currently, all of Crux's platform-specific code lies in `crux::os` (Crux's OS APIs) and `crux::rt` (Crux's runtime).

@@ -5,4 +5,4 @@ edition = "2024"
 
 [dependencies.crux]
 path = ".."
-features = ["safety-checks"]
+features = ["safety-checks", "logging"]

@@ -6,6 +6,38 @@
 use crux::prelude::*;
 
 #[test]
+fn log_macro() {
+	use crux::{
+		lang::borrow::Cow,
+		logging::{Log, LogLevel, mklog},
+	};
+	const MODULE_PATH: &str = crux::lang::module_path!();
+
+	assert_eq!(
+		mklog!(LogLevel::Info, "Hello, world!"),
+		Log {
+			level: LogLevel::Info,
+			module: MODULE_PATH,
+			msg: Cow::Borrowed("Hello, world!"),
+			line: 17,
+			column: 3,
+			file: "tests/src/lib.rs"
+		}
+	);
+	assert_eq!(
+		mklog!(LogLevel::Info, "Hello, {}", "world!"),
+		Log {
+			level: LogLevel::Info,
+			module: MODULE_PATH,
+			msg: Cow::Owned(String::from("Hello, world!")),
+			line: 28,
+			column: 3,
+			file: "tests/src/lib.rs"
+		}
+	);
+}
+
+#[test]
 #[allow(clippy::assertions_on_constants)]
 fn integer_trait() {
 	use crux::num::Integer;

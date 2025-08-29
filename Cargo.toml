@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = ["external", "tests"]
+members = ["examples/logging", "examples/testing", "external", "tests"]
+dependencies.crux.path = "."
 
 [dependencies]
 external.path = "external"
@@ -13,5 +14,10 @@ external.path = "external"
 default = []
 # Enables additional memory safety checks in various unsafe functions.
 safety-checks = []
-# Registers crux::mem::OsAllocator as the global allocator.
-global-os-alloc = []
+# Registers crux::os::mem::OsAllocator as the global allocator.
+global-os-allocator = []
+# Enables logging functionality.
+logging = []
+# Provides a default panic handler, which simply logs the panic as a fatal log,
+# then exits the process (on supported OSes) or spin loops.
+logging-panic-handler = []

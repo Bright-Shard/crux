@@ -6,6 +6,7 @@
 //
 //
 
+#[doc(inline)]
 pub use crate::external::{
 	alloc::ffi::CString,
 	core::ffi::{

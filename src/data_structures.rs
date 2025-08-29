@@ -2,31 +2,25 @@
 
 pub mod sized_vec;
 
-pub use {
-	crate::external::{
-		alloc::{
-			collections::{
-				binary_heap::{self, BinaryHeap},
-				btree_map::{self, BTreeMap},
-				btree_set::{self, BTreeSet},
-			},
-			vec::{self, Vec},
-		},
-		hashbrown::{
-			hash_map::{self, HashMap},
-			hash_set::{self, HashSet},
-			hash_table::{self, HashTable},
-		},
+pub use self::{
+	arena_vec::ArenaVec, binary_heap::BinaryHeap, btree_map::BTreeMap, btree_set::BTreeSet,
+	hash_map::HashMap, hash_set::HashSet, hash_table::HashTable, sized_vec::SizedVec, vec::Vec,
+};
+#[doc(inline)]
+pub use crate::external::{
+	alloc::{
+		boxed::Box,
+		collections::{binary_heap, btree_map, btree_set},
+		vec,
 	},
-	arena_vec::ArenaVec,
-	sized_vec::SizedVec,
+	hashbrown::{hash_map, hash_set, hash_table},
 };
 
 pub mod arena_vec {
 	use crate::{
 		data_structures::sized_vec::IndexSize,
 		lang::UnsafeCell,
-		mem::{ArenaAllocator, ArenaPreallocationError, MemoryAmount},
+		os::mem::{ArenaAllocator, ArenaPreallocationError, MemoryAmount},
 	};
 
 	/// A vector backed by an arena allocator.
@@ -34,6 +28,12 @@ pub mod arena_vec {
 	/// Because arenas never move in memory, this vector can be pushed to
 	/// immutably; pushing will not move anything in memory and therefore
 	/// doesn't need exclusive ownership.
+	///
+	/// Compared to using an arena by itself, [`ArenaVec`] has two advantages:
+	/// 1. It only allows storing one type, which may be nice for some
+	///    scenarios.
+	/// 2. It calls `drop` on objects in the vec when the vec is dropped. The
+	///    standalone arena allocator does not do this.
 	pub struct ArenaVec<T, S: IndexSize = usize>(UnsafeCell<SizedVec<T, S, ArenaAllocator>>);
 	impl<T, S: IndexSize> ArenaVec<T, S> {
 		/// Reserve virtual memory for a new arena-backed vector. Errors if
