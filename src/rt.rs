@@ -20,15 +20,19 @@
 //!    [`GLOBAL_OS_ALLOCATOR`].
 //! 4. Global program logging; see [`LOGGER`].
 
+pub mod backtrace;
+pub mod entrypoint;
+
 #[cfg(target_os = "windows")]
 use crate::mem::NonNull;
 use crate::{
 	external::libc,
 	lang::{
-		MaybeUninit, cfg, panic,
-		ptr::{addr_of, addr_of_mut},
+		self, Layout, MaybeUninit, cfg,
+		mem::{addr_of, addr_of_mut},
+		panic,
 	},
-	logging::{EmptyLogger, Log, Logger},
+	logging::{Log, Logger, SyncLogger},
 	os,
 };
 
@@ -75,6 +79,11 @@ pub const LOGGING_ENABLED: bool = cfg!(logging);
 pub struct RuntimeInfo {
 	/// The size of a page of memory on the current machine.
 	pub page_size: usize,
+	/// The raw CLI args passed to the program at startup.
+	pub cli_args_raw: &'static [&'static [u8]],
+	/// The CLI args passed to the program at startup, lossily converted to
+	/// UTF-8.
+	pub cli_args: &'static [&'static str],
 }
 
 /// Global instance of [`RuntimeInfo`]. Loaded by [`startup_hook`]. Accessible
@@ -94,14 +103,13 @@ pub fn info() -> &'static RuntimeInfo {
 #[crate::os::mem::global_allocator]
 pub static GLOBAL_OS_ALLOCATOR: crate::os::mem::OsAllocator = crate::os::mem::OsAllocator;
 
-#[cfg(all(not(test), feature = "logging-panic-handler"))]
-#[panic_handler]
-fn panic_handler(info: &crate::lang::panic::PanicInfo) -> ! {
+#[cfg_attr(feature = "logging-panic-handler", panic_handler)]
+pub fn logging_panic_handler(info: &crate::lang::panic::PanicInfo) -> ! {
 	crate::logging::fatal!("{}", info);
 
 	#[cfg(supported_os)]
 	{
-		crate::os::proc::exit()
+		crate::os::proc::exit_with_code(101)
 	}
 	#[cfg(not(supported_os))]
 	{
@@ -120,7 +128,8 @@ fn panic_handler(info: &crate::lang::panic::PanicInfo) -> ! {
 ///
 /// [`log`]: crate::logging::log
 /// [`fatal`]: crate::logging::fatal
-pub static mut LOGGER: &'static dyn Logger = &EmptyLogger;
+pub static mut LOGGER: &'static dyn SyncLogger =
+	&crate::logging::StdoutLogger::new(crate::logging::colour_formatter);
 /// Sends a log to the global [`LOGGER`] instance.
 pub fn emit_log(log: Log) {
 	unsafe { &*addr_of_mut!(LOGGER) }.log(log);
@@ -137,12 +146,10 @@ pub fn emit_log(log: Log) {
 ///
 /// The simplest way to use this function safely is to call it one time at
 /// startup, and never again.
-pub unsafe fn set_logger(logger: &'static dyn Logger) {
-	unsafe {
-		let ptr = addr_of_mut!(LOGGER);
-		crate::lang::ptr::drop_in_place(ptr);
-		*ptr = logger;
-	};
+pub unsafe fn set_logger(mut logger: &'static dyn SyncLogger) {
+	let global_logger = unsafe { &mut *addr_of_mut!(LOGGER) };
+	lang::mem::swap(&mut logger, global_logger);
+	unsafe { lang::mem::drop_in_place(&mut logger) };
 }
 
 //
@@ -150,6 +157,17 @@ pub unsafe fn set_logger(logger: &'static dyn Logger) {
 // Startup hook
 //
 //
+
+/// Information that needs to be passed to [`startup_hook`]. Note that this
+/// struct's fields are platform-specific, since different platforms need
+/// different data at startup.
+pub struct StartupHookInfo {
+	/// On Unix, the main function gets `argc` and `argv` parameters, which seem
+	/// to be the only way to get the program's CLI arguments. Here we pass
+	/// `argv` as a Rust slice.
+	#[cfg(unix)]
+	pub args: &'static [*const u8],
+}
 
 /// A function that must be called at startup by all binaries using Crux.
 /// Not calling this function at startup will lead to undefined behaviour. It
@@ -169,12 +187,60 @@ pub unsafe fn set_logger(logger: &'static dyn Logger) {
 /// Many Crux APIs assume this function has been called already when they run,
 /// because it loads important OS information used by those APIs. This function
 /// should be called as early as possible in the program's startup code.
-pub unsafe fn startup_hook() {
+pub unsafe fn startup_hook(info: StartupHookInfo) {
+	fn args_to_utf8(raw: &'static [&'static [u8]]) -> &'static [&'static str] {
+		let str_len = raw.iter().map(|buf| buf.len()).sum();
+		let string: ArenaString<usize> = ArenaString::new_preallocate(
+			MemoryAmount::bytes(str_len),
+			MemoryAmount::bytes(str_len),
+		)
+		.unwrap(); // TODO how to handle possible panics during startup?
+		let mut out = Vec::with_capacity(Layout::array::<&'static str>(raw.len()).unwrap().size());
+
+		let mut next_base = 0;
+		for buf in raw {
+			for chunk in buf.utf8_chunks() {
+				string.push_str(chunk.valid());
+				if !chunk.invalid().is_empty() {
+					string.push_char(char::REPLACEMENT_CHARACTER);
+				}
+
+				// Safety: string never moves in memory and we leak it at the
+				// end of this function. References to it can be static.
+				out.push(unsafe { &*(&string[next_base..] as *const str) });
+				next_base = string.len();
+			}
+		}
+
+		lang::forget(string);
+		out.leak()
+	}
+
 	let runtime_info = {
 		#[cfg(target_family = "unix")]
 		{
 			let page_size = os::unix::sysconf(libc::_SC_PAGE_SIZE) as usize;
-			RuntimeInfo { page_size }
+
+			let mut buf = Vec::with_capacity(
+				Layout::array::<&'static [u8]>(info.args.len())
+					.unwrap()
+					.size(),
+			);
+
+			for arg in info.args {
+				let Some(ptr) = NonNullConst::new(*arg) else {
+					continue;
+				};
+				let slice = unsafe { crate::ffi::null_terminated_pointer_to_slice::<false>(ptr) };
+				buf.push(slice);
+			}
+			let buf: &'static [&'static [u8]] = buf.leak();
+
+			RuntimeInfo {
+				page_size,
+				cli_args_raw: buf,
+				cli_args: args_to_utf8(buf),
+			}
 		}
 		#[cfg(target_os = "windows")]
 		{

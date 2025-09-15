@@ -10,11 +10,7 @@ use crate::{external::libc, lang::*, os};
 
 pub use external::{
 	alloc::alloc::Global as GlobalAllocator,
-	core::{
-		alloc::{AllocError, Allocator, GlobalAlloc, Layout, LayoutError},
-		mem::{replace, swap, take, zeroed},
-		prelude::rust_2024::global_allocator,
-	},
+	core::{alloc::GlobalAlloc, prelude::rust_2024::global_allocator},
 };
 
 //
@@ -210,7 +206,7 @@ pub fn commit(mem: ReservedMemory) -> Result<(), ()> {
 			)
 		};
 
-		if !ptr.is_null() { Ok(()) } else { Err(()) }
+		if !mem.is_null() { Ok(()) } else { Err(()) }
 	}
 	#[cfg(not(supported_os))]
 	compile_error!("unimplemented on this operating system");
@@ -321,7 +317,7 @@ pub unsafe fn free(ptr: NonNull<()>, amount: MemoryAmount) {
 	#[cfg(windows)]
 	unsafe {
 		os::win32::VirtualFree(
-			ptr.cast(),
+			mem.cast(),
 			0, // must be 0 for FreeType::Release
 			win32::FreeType::Release,
 		);
@@ -387,6 +383,7 @@ impl ArenaCheckpoint {
 }
 
 /// Which stage of allocation failed when preallocating an [`ArenaAllocator`].
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ArenaPreallocationError {
 	/// Reserving virtual memory failed.
 	Reserve,

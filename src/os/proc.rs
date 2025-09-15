@@ -23,6 +23,19 @@ pub fn exit() -> ! {
 	compile_error!("unimplemented on this operating system");
 }
 
+pub fn exit_with_code(code: i32) -> ! {
+	#[cfg(unix)]
+	{
+		os::unix::exit(code as _)
+	}
+	#[cfg(windows)]
+	{
+		compile_error!("todo")
+	}
+	#[cfg(not(supported_os))]
+	compile_error!("unimplemented on this operating system");
+}
+
 //
 //
 // stdout
@@ -170,4 +183,23 @@ pub unsafe fn get_env_raw(name: &str) -> Option<NonNullConst<c_char>> {
 	}
 	#[cfg(not(supported_os))]
 	compile_error!("unimplemented on this operating system");
+}
+
+/// Returns all of the arguments passed to the program via the CLI, lossily
+/// encoded as UTF-8. Note that the 0th argument is typically the path to the
+/// executable, and not an argument you need to parse.
+///
+/// For an unencoded version, see [`cli_args_raw`].
+pub fn cli_args() -> &'static [&'static str] {
+	crate::rt::info().cli_args
+}
+
+/// Returns all of the arguments passed to the program via the CLI. Note that
+/// the 0th argument is typically the path to the executable, and not an
+/// argument you need to parse.
+///
+/// The encoding of the arguments is unspecified, as these are the raw bytes
+/// from the operating system. For a UTF-8 encoded version, see [`cli_args`].
+pub fn cli_args_raw() -> &'static [&'static [u8]] {
+	crate::rt::info().cli_args_raw
 }

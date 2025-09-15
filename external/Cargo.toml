@@ -3,6 +3,9 @@ name = "external"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+harness = false
+
 [dependencies]
 hashbrown = { version = "0.15", default-features = false, features = [
 	"default-hasher",

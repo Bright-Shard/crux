@@ -14,14 +14,7 @@
 //
 //
 
-pub use {
-	compiler::*,
-	essential::*,
-	external::core::cell::{Cell, LazyCell, RefCell, UnsafeCell},
-	iter::*,
-	op::*,
-	ptr::*,
-};
+pub use {compiler::*, essential::*, iter::*, mem::*, op::*};
 
 pub mod op {
 	//! Traits that overload operators.
@@ -77,18 +70,55 @@ pub mod compiler {
 	};
 }
 
-pub mod ptr {
-	//! Items for interacting with pointers in Rust.
+pub mod mem {
+	//! Items for interacting with Rust's memory model - pointers, references,
+	//! ownership, allocations, etc.
 
 	#[doc(inline)]
-	pub use external::core::ptr::{
-		NonNull, addr_of, addr_of_mut, copy, copy_nonoverlapping, dangling as dangling_ptr,
-		dangling_mut as dangling_ptr_mut, drop_in_place, null as null_ptr,
-		null_mut as null_ptr_mut, replace as replace_ptr, slice_from_raw_parts,
-		slice_from_raw_parts_mut, swap as swap_ptr, swap_nonoverlapping,
+	pub use external::{
+		alloc::borrow::{Cow, ToOwned},
+		core::{
+			alloc::{AllocError, Allocator, Layout, LayoutError},
+			borrow::{Borrow, BorrowMut},
+			cell::{self, Cell, LazyCell, RefCell, UnsafeCell},
+			mem::{replace, swap, take, zeroed},
+			ptr::{
+				self, NonNull, addr_of, addr_of_mut, copy, copy_nonoverlapping,
+				dangling as dangling_ptr, dangling_mut as dangling_ptr_mut, drop_in_place,
+				null as null_ptr, null_mut as null_ptr_mut, replace as replace_ptr,
+				slice_from_raw_parts, slice_from_raw_parts_mut, swap as swap_ptr,
+				swap_nonoverlapping,
+			},
+		},
 	};
 
 	use crate::ffi::{CStr, c_char};
+
+	pub trait AsStatic {
+		type Ref: ToOwned + ?Sized;
+
+		#[allow(clippy::wrong_self_convention)]
+		fn as_static(self) -> Cow<'static, Self::Ref>;
+	}
+
+	impl AsStatic for &&str {
+		type Ref = str;
+		fn as_static(self) -> Cow<'static, Self::Ref> {
+			Cow::Owned(String::from(*self))
+		}
+	}
+	impl AsStatic for &'static str {
+		type Ref = str;
+		fn as_static(self) -> Cow<'static, Self::Ref> {
+			Cow::Borrowed(self)
+		}
+	}
+	impl AsStatic for String {
+		type Ref = str;
+		fn as_static(self) -> Cow<'static, Self::Ref> {
+			Cow::Owned(self)
+		}
+	}
 
 	/// [`NonNull`], but with a const pointer instead of a mutable pointer.
 	#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -142,6 +172,13 @@ pub mod ptr {
 	}
 
 	impl NonNullConst<c_char> {
+		/// Convert this pointer to a [`c_char`] to a [`CStr`].
+		///
+		///
+		/// # Safety
+		///
+		/// The pointer must be valid for `'a` and must point to a
+		/// null-terminated buffer of `c_char`s.
 		pub const unsafe fn as_c_str<'a>(self) -> &'a CStr {
 			unsafe { CStr::from_ptr(self.as_ptr()) }
 		}
@@ -151,16 +188,7 @@ pub mod ptr {
 pub mod iter {
 	//! Items for working with iterators.
 
-	pub use crate::external::core::iter::{Extend, IntoIterator, Iterator};
-}
-
-pub mod borrow {
-	//! Items for working with references.
-
-	pub use crate::external::{
-		alloc::borrow::{Cow, ToOwned},
-		core::borrow::{Borrow, BorrowMut},
-	};
+	pub use external::core::iter::{Extend, IntoIterator, Iterator};
 }
 
 pub mod panic {

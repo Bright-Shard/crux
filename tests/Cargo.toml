@@ -6,3 +6,6 @@ edition = "2024"
 [dependencies.crux]
 path = ".."
 features = ["safety-checks", "logging"]
+
+[lib]
+harness = false

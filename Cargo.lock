@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "cli"
+version = "0.1.0"
+dependencies = [
+ "crux",
+]
+
+[[package]]
 name = "crux"
 version = "0.1.0"
 dependencies = [

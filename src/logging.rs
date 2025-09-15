@@ -13,13 +13,13 @@
 //! If the `log` crate feature is not enabled, the various logging macros simply
 //! emit no code, so attempting to log events adds no overhead.
 //!
-//! For information on the global logger, see [`rt::emit_logGER`].
+//! For information on the global logger, see [`rt::emit_logger`].
 //!
 //! [`rt::emit_log`]: crate::rt::emit_log
-//! [`rt::emit_logGER`]: crate::rt::emit_logGER
+//! [`rt::emit_logger`]: crate::rt::emit_logger
 
 use crate::{
-	lang::borrow::Cow,
+	lang::Cow,
 	text::{Display, format},
 };
 
@@ -50,7 +50,7 @@ pub struct Log {
 
 /// Represents the severity of a log - i.e. how critical a logged event is
 /// to the program.
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum LogLevel {
 	/// Extra information only really useful while debugging the program.
@@ -87,11 +87,14 @@ impl Display for LogLevel {
 #[cfg(logging)]
 #[macro_export]
 macro_rules! mklog {
+	($level:expr) => {
+		$crate::logging::mklog!($level, "")
+	};
 	($level:expr, $msg:literal) => {
 		$crate::logging::Log {
 			level: $level,
 			module: $crate::lang::compiler::module_path!(),
-			msg: $crate::lang::borrow::Cow::Borrowed($msg),
+			msg: $crate::text::maybe_format_static($crate::text::format_args!($msg)),
 			line: $crate::lang::compiler::line!(),
 			column: $crate::lang::compiler::column!(),
 			file: $crate::lang::compiler::file!()
@@ -101,7 +104,7 @@ macro_rules! mklog {
 		$crate::logging::Log {
 			level: $level,
 			module: $crate::lang::compiler::module_path!(),
-			msg: $crate::lang::borrow::Cow::Owned($crate::text::format!($msg, $($arg),*)),
+			msg: $crate::text::maybe_format_static($crate::text::format_args!($msg, $($arg),*)),
 			line: $crate::lang::compiler::line!(),
 			column: $crate::lang::compiler::column!(),
 			file: $crate::lang::compiler::file!()
@@ -120,12 +123,15 @@ pub use crate::mklog;
 #[cfg(logging)]
 #[macro_export]
 macro_rules! log {
-    ($level:expr, $msg:literal) => {
-    	$crate::rt::emit_log($crate::logging::mklog!($level, $msg));
-    };
-    ($level:expr, $msg:literal, $($arg:expr),*) => {
-	    $crate::rt::emit_log($crate::logging::mklog!($level, $msg, $($arg),*));
-    };
+	($level:expr) => {
+		$crate::logging::log!($level, "")
+	};
+	($level:expr, $msg:literal) => {
+		$crate::rt::emit_log($crate::logging::mklog!($level, $msg));
+	};
+	($level:expr, $msg:literal, $($arg:expr),*) => {
+	   $crate::rt::emit_log($crate::logging::mklog!($level, $msg, $($arg),*));
+	};
 }
 #[cfg(not(logging))]
 #[macro_export]
@@ -140,6 +146,9 @@ macro_rules! leveled_log {
 	($mkname:ident, $name:ident, $level:ident) => {
 		#[macro_export]
 		macro_rules! $mkname {
+			() => {
+				$crate::logging::mklog!($crate::logging::LogLevel::$level)
+			};
 			($msg:literal) => {
 				$crate::logging::mklog!($crate::logging::LogLevel::$level, $msg)
 			};
@@ -151,6 +160,9 @@ macro_rules! leveled_log {
 
 		#[macro_export]
 		macro_rules! $name {
+			() => {
+				$crate::logging::log!($crate::logging::LogLevel::$level)
+			};
     		($msg:literal) => {
 	      	$crate::logging::log!($crate::logging::LogLevel::$level, $msg);
       	};
@@ -175,11 +187,17 @@ pub use warning as warn;
 //
 
 /// A type that receives generated [`Log`]s.
-pub trait Logger: Sync {
+pub trait Logger {
+	/// Receive a [`Log`].
 	fn log(&self, log: Log);
 }
 
-/// Crux's default formatter for displaying [`Log`]s in colour.
+/// Sync version of [`Logger`]. Automatically implemented for types that are
+/// `Logger + Sync`.
+pub trait SyncLogger: Logger + Sync {}
+impl<T: Logger + Sync> SyncLogger for T {}
+
+/// Crux's default formatter for displaying [`Log`]s in ANSI colours.
 pub fn colour_formatter(log: Log) -> String {
 	use crate::term::*;
 
@@ -196,9 +214,9 @@ pub fn colour_formatter(log: Log) -> String {
 		LogLevel::Warn => FG_YELLOW,
 		LogLevel::Error | LogLevel::Fatal => FG_RED,
 	};
-	format!("{colour}[{module}] {level}: {msg}{RESET}\n\tFrom {file}@{line}:{column}\n")
+	format!("{colour}[{module} {RESET}<{file}@{line}:{column}>{colour}] {level}: {RESET}{msg}\n")
 }
-/// Crux's default formatter for displaying [`Log`]s without colour.
+/// Crux's default formatter for displaying plaintext [`Log`]s.
 pub fn default_formatter(log: Log) -> String {
 	let Log {
 		level,
@@ -208,11 +226,16 @@ pub fn default_formatter(log: Log) -> String {
 		column,
 		file,
 	} = log;
-	format!("[{module}] {level}: {msg}\n\tFrom {file}@{line}:{column}\n")
+	format!("[{module} <{file}@{line}:{column}>] {level}: {msg}\n")
 }
 
 /// A logger that prints all logs to stdout.
 pub struct StdoutLogger(fn(Log) -> String);
+impl StdoutLogger {
+	pub const fn new(formatter: fn(Log) -> String) -> Self {
+		Self(formatter)
+	}
+}
 impl Default for StdoutLogger {
 	fn default() -> Self {
 		Self(colour_formatter)

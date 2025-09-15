@@ -1,10 +1,12 @@
-use external::core::unreachable;
-
 use crate::{
 	io::Writer,
-	lang::{iter::*, op::*, ptr, size_of, slice_from_raw_parts, slice_from_raw_parts_mut},
+	lang::{
+		iter::*,
+		mem::{self, Layout},
+		op::*,
+		size_of, slice_from_raw_parts, slice_from_raw_parts_mut,
+	},
 	num::Integer,
-	os::mem::Layout,
 	prelude::*,
 };
 
@@ -15,7 +17,7 @@ use crate::{
 /// Using an index type that's larger than [`usize`]
 ///
 /// [`Vec`]: crate::data_structures::Vec
-pub struct SizedVec<T, S: IndexSize = usize, A: Allocator = GlobalAllocator> {
+pub struct SizedVec<T, S: const IndexSize = usize, A: Allocator = GlobalAllocator> {
 	capacity: S,
 	len: S,
 	base_ptr: NonNull<MaybeUninit<T>>,
@@ -28,12 +30,12 @@ pub struct SizedVec<T, S: IndexSize = usize, A: Allocator = GlobalAllocator> {
 //
 //
 
-impl<T, S: IndexSize> Default for SizedVec<T, S, GlobalAllocator> {
+impl<T, S: const IndexSize> Default for SizedVec<T, S, GlobalAllocator> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
-impl<T, S: IndexSize> SizedVec<T, S, GlobalAllocator> {
+impl<T, S: const IndexSize> SizedVec<T, S, GlobalAllocator> {
 	pub const fn new() -> Self {
 		Self::with_allocator(GlobalAllocator)
 	}
@@ -42,7 +44,7 @@ impl<T, S: IndexSize> SizedVec<T, S, GlobalAllocator> {
 		Self::with_allocator_and_capacity(GlobalAllocator, num_items)
 	}
 }
-impl<T, S: IndexSize, A: Allocator> SizedVec<T, S, A> {
+impl<T, S: const IndexSize, A: Allocator> SizedVec<T, S, A> {
 	const BASE_ALLOC_COUNT: S = if size_of::<T>() == 1 {
 		S::FIVE + S::THREE
 	} else if size_of::<T>() < 1024 {
@@ -76,12 +78,12 @@ impl<T, S: IndexSize, A: Allocator> SizedVec<T, S, A> {
 	}
 }
 
-impl<T, S: IndexSize, A: Allocator> Drop for SizedVec<T, S, A> {
+impl<T, S: const IndexSize, A: Allocator> Drop for SizedVec<T, S, A> {
 	fn drop(&mut self) {
 		for item in self.as_slice_mut() {
 			let ptr: *mut T = item;
 			unsafe {
-				crate::lang::ptr::drop_in_place(ptr);
+				crate::lang::mem::drop_in_place(ptr);
 			}
 		}
 		unsafe {
@@ -118,7 +120,7 @@ pub enum SizedVecGrowthError {
 	MaxPossibleCapacity,
 }
 
-impl<T, S: IndexSize, A: Allocator> SizedVec<T, S, A> {
+impl<T, S: const IndexSize, A: Allocator> SizedVec<T, S, A> {
 	pub fn push(&mut self, item: T) -> &mut T {
 		self.try_push(item).unwrap()
 	}
@@ -176,7 +178,7 @@ impl<T, S: IndexSize, A: Allocator> SizedVec<T, S, A> {
 	/// successfully reallocated and now has the needed capacity. Returns `Err`
 	/// if the vector failed to reallocate with the needed capacity.
 	pub fn ensure_additional_capacity(&mut self, count: S) -> Result<(), SizedVecGrowthError> {
-		if self.remaining_capacity() <= count {
+		if self.remaining_capacity() >= count {
 			Ok(())
 		} else {
 			self.reserve_additional_capacity(count)
@@ -235,9 +237,23 @@ impl<T, S: IndexSize, A: Allocator> SizedVec<T, S, A> {
 		}
 	}
 
+	/// Copies the items from the given slice into this vector. This method can
+	/// be faster than pushing all the items from the slice individually.
+	///
+	/// This method will panic if pushing fails for any reason; see
+	/// [`try_extend_slice`] for a non-panicking variant.
+	///
+	/// [`try_extend_slice`]: Self::try_extend_slice
 	pub fn extend_slice<'a>(&'a mut self, slice: &[T]) -> &'a mut [T] {
 		self.try_extend_slice(slice).unwrap()
 	}
+	/// Copies the items from the given slice into this vector. This method can
+	/// be faster than pushing all the items from the slice individually.
+	///
+	/// See [`extend_slice`] for a version of this method that panics on an
+	/// error instead of returning the error.
+	///
+	/// [`extend_slice`]: Self::extend_slice
 	pub fn try_extend_slice<'a>(
 		&'a mut self,
 		slice: &[T],
@@ -245,11 +261,24 @@ impl<T, S: IndexSize, A: Allocator> SizedVec<T, S, A> {
 		self.ensure_additional_capacity(S::usize_as_self(slice.len()))?;
 		Ok(unsafe { self.extend_slice_unchecked(slice) })
 	}
+	/// Copies the items from the given slice into this vector. This method can
+	/// be faster than pushing all the items from the slice individually.
+	///
+	/// See [`extend_slice`] for a safe version of this method.
+	///
+	///
+	/// # Safety
+	///
+	/// The caller must ensure this vector has enough remaining capacity for the
+	/// given slice before extending this vector with it. Otherwise this method
+	/// will result in an out-of-bounds write.
+	///
+	/// [`extend_slice`]: Self::extend_slice
 	pub unsafe fn extend_slice_unchecked<'a>(&'a mut self, slice: &'_ [T]) -> &'a mut [T] {
 		let src = slice as *const [T] as *const T;
 		let dest = unsafe { self.base_ptr.add(self.len.as_usize()).as_ptr().cast() };
 		unsafe {
-			ptr::copy_nonoverlapping(src, dest, slice.len());
+			mem::copy_nonoverlapping(src, dest, slice.len());
 		}
 		self.len += S::usize_as_self(slice.len());
 
@@ -275,7 +304,7 @@ impl<T, S: IndexSize, A: Allocator> SizedVec<T, S, A> {
 	}
 }
 
-impl<T, S: IndexSize, A: Allocator> Extend<T> for SizedVec<T, S, A> {
+impl<T, S: const IndexSize, A: Allocator> Extend<T> for SizedVec<T, S, A> {
 	fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
 		let iter = iter.into_iter();
 		let (min_size, max_size) = iter.size_hint();
@@ -297,7 +326,7 @@ impl<T, S: IndexSize, A: Allocator> Extend<T> for SizedVec<T, S, A> {
 	}
 }
 
-impl<S: IndexSize, A: Allocator> Writer for SizedVec<u8, S, A> {
+impl<S: const IndexSize, A: Allocator> Writer for SizedVec<u8, S, A> {
 	type Error = SizedVecGrowthError;
 
 	/// Copies `bytes` into the vector.
@@ -331,22 +360,22 @@ impl<S: IndexSize, A: Allocator> Writer for SizedVec<u8, S, A> {
 //
 //
 
-impl<T, S: IndexSize, A: Allocator> SizedVec<T, S, A> {
-	pub fn as_slice(&self) -> &[T] {
+impl<T, S: const IndexSize, A: Allocator> SizedVec<T, S, A> {
+	pub const fn as_slice(&self) -> &[T] {
 		self
 	}
-	pub fn as_slice_mut(&mut self) -> &mut [T] {
+	pub const fn as_slice_mut(&mut self) -> &mut [T] {
 		self
 	}
 }
-impl<T, S: IndexSize, A: Allocator> Deref for SizedVec<T, S, A> {
+impl<T, S: const IndexSize, A: Allocator> const Deref for SizedVec<T, S, A> {
 	type Target = [T];
 
 	fn deref(&self) -> &Self::Target {
 		unsafe { &*slice_from_raw_parts(self.base_ptr.as_ptr().cast(), self.len.as_usize()) }
 	}
 }
-impl<T, S: IndexSize, A: Allocator> DerefMut for SizedVec<T, S, A> {
+impl<T, S: const IndexSize, A: Allocator> const DerefMut for SizedVec<T, S, A> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		unsafe {
 			&mut *slice_from_raw_parts_mut(self.base_ptr.as_ptr().cast(), self.len.as_usize())
@@ -361,7 +390,8 @@ impl<T, S: IndexSize, A: Allocator> DerefMut for SizedVec<T, S, A> {
 //
 
 /// Implemented for various-sized types that can index into a [`SizedVec`].
-pub trait IndexSize: Integer {
+#[rustfmt::skip]
+pub const trait IndexSize: Integer {
 	/// Casts the number to a [`usize`].
 	fn as_usize(self) -> usize;
 	/// Casts a [`usize`] to this number type.
@@ -370,7 +400,7 @@ pub trait IndexSize: Integer {
 
 /// Implemented for types that can be used in the indexing operation (`[]`) for
 /// [`SizedVec`]s.
-pub trait SizedVecIndexOp<T, S: IndexSize, A: Allocator> {
+pub trait SizedVecIndexOp<T, S: const IndexSize, A: Allocator> {
 	type Output: ?Sized;
 
 	/// Index into the given [`SizedVec`] without first checking if the index
@@ -397,7 +427,7 @@ pub trait SizedVecIndexOp<T, S: IndexSize, A: Allocator> {
 macro_rules! impl_nums {
 	($($ty:ty)*) => {
 		$(
-			impl IndexSize for $ty {
+			impl const IndexSize for $ty {
 				fn as_usize(self) -> usize {
 					self as usize
 				}
@@ -427,7 +457,7 @@ macro_rules! impl_nums {
 }
 impl_nums!(u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 usize isize);
 
-impl<T, S: IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for Range<S> {
+impl<T, S: const IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for Range<S> {
 	type Output = [T];
 
 	unsafe fn index_unchecked(self, vec: &SizedVec<T, S, A>) -> &[T] {
@@ -465,7 +495,7 @@ impl<T, S: IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for Range<S> {
 		}
 	}
 }
-impl<T, S: IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for RangeInclusive<S> {
+impl<T, S: const IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for RangeInclusive<S> {
 	type Output = [T];
 
 	unsafe fn index_unchecked(self, vec: &SizedVec<T, S, A>) -> &[T] {
@@ -503,7 +533,7 @@ impl<T, S: IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for RangeInclusive<
 		}
 	}
 }
-impl<T, S: IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for RangeFrom<S> {
+impl<T, S: const IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for RangeFrom<S> {
 	type Output = [T];
 
 	unsafe fn index_unchecked(self, vec: &SizedVec<T, S, A>) -> &[T] {
@@ -541,7 +571,7 @@ impl<T, S: IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for RangeFrom<S> {
 		}
 	}
 }
-impl<T, S: IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for RangeTo<S> {
+impl<T, S: const IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for RangeTo<S> {
 	type Output = [T];
 
 	unsafe fn index_unchecked(self, vec: &SizedVec<T, S, A>) -> &[T] {
@@ -569,7 +599,7 @@ impl<T, S: IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for RangeTo<S> {
 		}
 	}
 }
-impl<T, S: IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for RangeToInclusive<S> {
+impl<T, S: const IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for RangeToInclusive<S> {
 	type Output = [T];
 
 	unsafe fn index_unchecked(self, vec: &SizedVec<T, S, A>) -> &[T] {
@@ -599,7 +629,7 @@ impl<T, S: IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for RangeToInclusiv
 		}
 	}
 }
-impl<T, S: IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for RangeFull {
+impl<T, S: const IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for RangeFull {
 	type Output = [T];
 
 	unsafe fn index_unchecked(self, vec: &SizedVec<T, S, A>) -> &[T] {
@@ -616,7 +646,7 @@ impl<T, S: IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for RangeFull {
 	}
 }
 
-impl<T, S: IndexSize, A: Allocator> SizedVec<T, S, A> {
+impl<T, S: const IndexSize, A: Allocator> SizedVec<T, S, A> {
 	pub fn get(&self, idx: S) -> Option<&T> {
 		if idx < self.len {
 			unsafe { Some(self.get_unchecked(idx)) }
@@ -687,17 +717,34 @@ impl<T, S: IndexSize, A: Allocator> SizedVec<T, S, A> {
 	}
 }
 
-impl<T, S: IndexSize, A: Allocator, SO: SizedVecIndexOp<T, S, A>> Index<SO> for SizedVec<T, S, A> {
+impl<T, S: const IndexSize, A: Allocator, SO: SizedVecIndexOp<T, S, A>> Index<SO>
+	for SizedVec<T, S, A>
+{
 	type Output = SO::Output;
 
 	fn index(&self, index: SO) -> &Self::Output {
 		index.index(self).unwrap()
 	}
 }
-impl<T, S: IndexSize, A: Allocator, SO: SizedVecIndexOp<T, S, A>> IndexMut<SO>
+impl<T, S: const IndexSize, A: Allocator, SO: SizedVecIndexOp<T, S, A>> IndexMut<SO>
 	for SizedVec<T, S, A>
 {
 	fn index_mut(&mut self, index: SO) -> &mut Self::Output {
 		index.index_mut(self).unwrap()
+	}
+}
+
+//
+//
+// Tests
+//
+//
+
+#[cfg(test)]
+mod tests {
+	#[test]
+	fn sized_vec_idx_usize_limit() {
+		// When uncommented the below should fail to compile.
+		// let vec = SizedVec::<(), u128>::default();
 	}
 }

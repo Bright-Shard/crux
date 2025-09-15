@@ -1,5 +1,7 @@
-#![feature(prelude_import)]
 #![allow(internal_features)]
+#![feature(prelude_import)]
+#![no_std]
+#![no_main]
 
 #[allow(unused_imports)]
 #[prelude_import]
@@ -8,7 +10,7 @@ use crux::prelude::*;
 #[test]
 fn log_macro() {
 	use crux::{
-		lang::borrow::Cow,
+		lang::ownership::Cow,
 		logging::{Log, LogLevel, mklog},
 	};
 	const MODULE_PATH: &str = crux::lang::module_path!();
@@ -19,7 +21,7 @@ fn log_macro() {
 			level: LogLevel::Info,
 			module: MODULE_PATH,
 			msg: Cow::Borrowed("Hello, world!"),
-			line: 17,
+			line: 18,
 			column: 3,
 			file: "tests/src/lib.rs"
 		}
@@ -30,7 +32,7 @@ fn log_macro() {
 			level: LogLevel::Info,
 			module: MODULE_PATH,
 			msg: Cow::Owned(String::from("Hello, world!")),
-			line: 28,
+			line: 29,
 			column: 3,
 			file: "tests/src/lib.rs"
 		}
@@ -81,10 +83,4 @@ fn sized_arenavec() {
 	assert_eq!(vec[0u32], 0u8);
 	assert_eq!(vec[1u32], 1u8);
 	assert_eq!(vec[0u32..=1u32], [0u8, 1u8]);
-}
-
-#[test]
-fn sized_vec_idx_usize_limit() {
-	// When uncommented the below should fail to compile.
-	// let vec = SizedVec::<(), u128>::default();
 }

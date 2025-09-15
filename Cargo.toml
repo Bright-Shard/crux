@@ -4,20 +4,45 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = ["examples/logging", "examples/testing", "external", "tests"]
+members = [
+	"examples/cli",
+	"examples/logging",
+	"examples/testing",
+	"external",
+	"tests",
+]
 dependencies.crux.path = "."
+
+[lib]
+harness = false
 
 [dependencies]
 external.path = "external"
 
 [features]
-default = []
-# Enables additional memory safety checks in various unsafe functions.
-safety-checks = []
+default = [
+	"global-os-allocator",
+	"logging-panic-handler",
+	"logging",
+	"term",
+	"concurrency",
+]
 # Registers crux::os::mem::OsAllocator as the global allocator.
 global-os-allocator = []
-# Enables logging functionality.
-logging = []
 # Provides a default panic handler, which simply logs the panic as a fatal log,
 # then exits the process (on supported OSes) or spin loops.
-logging-panic-handler = []
+logging-panic-handler = ["logging"]
+# Enables additional memory safety checks in various unsafe functions.
+safety-checks = []
+# Enables logging functionality.
+logging = []
+# Enables the `term` module
+term = []
+# Enables the `concurrency` module
+concurrency = []
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

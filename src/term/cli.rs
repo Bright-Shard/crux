@@ -120,6 +120,8 @@ pub enum ParseResult {
 	Recognised,
 	/// The given flag was not recognised.
 	NotRecognised,
+	/// The given flag needs an argument, but didn't have one.
+	MissingArgument,
 }
 
 /// An error that occurred while parsing CLI arguments.
@@ -132,6 +134,8 @@ pub enum ParseError<'a> {
 	UnusedArgument { flag: &'a str, arg: &'a str },
 	/// The user passed an argument that was only dashes (e.g. `-`, `--`).
 	NoFlag { num_dashes: u8 },
+	/// The user passed a flag that needs an argument without an argument.
+	MissingArgument { flag: &'a str, class: FlagClass<'a> },
 }
 
 //
@@ -141,13 +145,20 @@ pub enum ParseError<'a> {
 //
 
 /// Parses the given slice of CLI arguments with the given [`CliParser`].
-pub fn parse<'a, P>(args: &'a [&'a str], parser: &mut P)
+///
+/// `skip_executable` configures whether or not the parser will skip the first
+/// argument, which is traditionally the path to the current executable and
+/// not an actual CLI flag/argument to parse. You probably want to set it to
+/// true.
+pub fn parse<'a, P>(args: &'a [&'a str], parser: &mut P, skip_executable: bool)
 where
 	P: CliParser<'a>,
 {
+	let args = if skip_executable { &args[1..] } else { args };
+
 	let mut ctx = CliParsingCtx {
 		args,
-		idx: usize::MAX, // add gets wrapped to 0
+		idx: usize::MAX, // this gets incremented, where it wraps around to 0
 		status: CliParsingStatus::Used,
 		_ph: PhantomData,
 	};
@@ -265,8 +276,12 @@ where
 			}
 		};
 
-		if parser.parse(flag, class, &mut ctx) == ParseResult::NotRecognised {
-			parser.error(ParseError::UnknownFlag { flag });
+		match parser.parse(flag, class, &mut ctx) {
+			ParseResult::Recognised => {}
+			ParseResult::NotRecognised => parser.error(ParseError::UnknownFlag { flag }),
+			ParseResult::MissingArgument => {
+				parser.error(ParseError::MissingArgument { flag, class })
+			}
 		}
 
 		if ctx.idx == args.len() {
@@ -332,13 +347,13 @@ impl<'a, P: CliParser<'a>> CliParsingCtx<'a, P> {
 					FlagClass::SubcommandOrArgumentAssigned { raw, equals_idx } => {
 						match parser.parse(&raw[..equals_idx], class, self) {
 							ParseResult::NotRecognised => Some(raw),
-							ParseResult::Recognised => None,
+							ParseResult::Recognised | ParseResult::MissingArgument => None,
 						}
 					}
 					FlagClass::SubcommandOrArgument { raw } => {
 						match parser.parse(raw, class, self) {
 							ParseResult::NotRecognised => Some(raw),
-							ParseResult::Recognised => None,
+							ParseResult::Recognised | ParseResult::MissingArgument => None,
 						}
 					}
 				};
@@ -380,7 +395,7 @@ impl<'a, P: CliParser<'a>> CliParsingCtx<'a, P> {
 //
 
 /// Sorts command-line flags into various classes to make them easier to parse.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum FlagClass<'a> {
 	/// A flag with one dash. Note that multiple flags
 	/// may be contained within this short flag.
@@ -812,7 +827,7 @@ mod tests {
 				profile: None,
 				verbosity: 0,
 			};
-			parse(case.flags, &mut parser);
+			parse(case.flags, &mut parser, false);
 			assert_eq!(parser, case.expected);
 		}
 	}

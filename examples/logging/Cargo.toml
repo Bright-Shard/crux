@@ -4,4 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-crux = { workspace = true, features = ["logging"] }
+crux = { workspace = true, features = [
+	"logging",
+	"logging-panic-handler",
+	"global-os-allocator",
+] }

@@ -1,18 +1,19 @@
-#![no_std]
-#![no_core]
+#![allow(internal_features)] // needed for prelude_import rn
+#![allow(clippy::result_unit_err)]
 #![feature(allocator_api)]
 #![feature(const_trait_impl)]
 #![feature(const_ops)]
-#![feature(no_core)]
-#![allow(internal_features)] // needed for prelude_import rn
 #![feature(prelude_import)]
 #![feature(slice_index_methods)]
 #![feature(extend_one)]
 #![feature(macro_metavar_expr)]
-#![feature(round_char_boundary)]
 #![feature(trim_prefix_suffix)]
-#![allow(clippy::result_unit_err)]
+#![feature(rustc_private)]
+#![feature(const_convert)]
+#![no_main]
+#![no_std]
 
+#[cfg(feature = "concurrency")]
 pub mod concurrency;
 pub mod crypto;
 pub mod data_structures;
@@ -22,6 +23,7 @@ pub mod logging;
 pub mod num;
 pub mod os;
 pub mod rt;
+#[cfg(feature = "term")]
 pub mod term;
 pub mod test;
 
@@ -36,18 +38,19 @@ pub mod prelude {
 		bitset,
 		crypto::hash::Hash,
 		data_structures::{
-			ArenaVec, BTreeMap, BTreeSet, BinaryHeap, Box, HashMap, HashSet, HashTable, SizedVec,
-			Vec,
+			ArenaString, ArenaVec, BTreeMap, BTreeSet, BinaryHeap, Box, HashMap, HashSet,
+			HashTable, SizedVec, TypedVec, Vec, typed_vec_idx,
 		},
 		lang::{
-			AsyncFn, AsyncFnMut, AsyncFnOnce, Clone, Copy, Default, Deref, DerefMut, Drop, Eq, Err,
-			Fn, FnMut, FnOnce, From, Into, IntoIterator, Iterator, ManuallyDrop, MaybeUninit,
-			NonNull, NonNullConst, None, Ok, Option, Ord, PartialEq, PartialOrd, Result, Send,
-			Sized, Some, Sync, derive, drop, matches, panic, todo, transmute, transmute_copy,
-			unreachable,
+			AllocError, Allocator, AsyncFn, AsyncFnMut, AsyncFnOnce, Clone, Copy, Default, Deref,
+			DerefMut, Drop, Eq, Err, Fn, FnMut, FnOnce, From, Into, IntoIterator, Iterator,
+			ManuallyDrop, MaybeUninit, NonNull, NonNullConst, None, Ok, Option, Ord, PartialEq,
+			PartialOrd, Result, Send, Sized, Some, Sync, derive, drop, matches, panic, todo,
+			transmute, transmute_copy, unreachable,
 		},
+		logging::{error, fatal, info, trace, warn},
 		os::{
-			mem::{AllocError, Allocator, ArenaAllocator, GlobalAllocator, MemoryAmount},
+			mem::{ArenaAllocator, GlobalAllocator, MemoryAmount},
 			proc::{print, println},
 		},
 		test::{
@@ -167,14 +170,33 @@ pub mod text {
 
 	#[doc(inline)]
 	pub use external::{
-		alloc::{ffi::CString, format, string::String},
+		alloc::{ffi::CString, fmt::format, format, string::String},
 		core::{
 			concat,
 			ffi::CStr,
-			fmt::{Arguments as FormatArgs, Debug, Display, Write as TextWrite},
+			fmt::{
+				Arguments as FormatArgs, Debug, Display, Write as TextWrite, write as write_fmt,
+			},
 			format_args, stringify,
 		},
 	};
+
+	use crate::lang::{AsStatic, Cow};
+
+	/// Converts the given [`FormatArgs`] to an `&str`, if possible; otherwise
+	/// allocates them to a string.
+	pub fn maybe_format<'a>(args: FormatArgs<'a>) -> Cow<'a, str> {
+		match args.as_str() {
+			Some(str) => Cow::Borrowed(str),
+			None => Cow::Owned(format(args)),
+		}
+	}
+	pub fn maybe_format_static(args: FormatArgs<'_>) -> Cow<'static, str> {
+		match args.as_str() {
+			Some(str) => AsStatic::as_static(str),
+			None => Cow::Owned(format(args)),
+		}
+	}
 }
 
 #[macro_export]
