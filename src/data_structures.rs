@@ -1,5 +1,6 @@
 //! Structures for storing and organizing data.
 
+pub mod graph;
 pub mod sized_vec;
 
 pub use self::{
@@ -7,6 +8,7 @@ pub use self::{
 	binary_heap::BinaryHeap,
 	btree_map::BTreeMap,
 	btree_set::BTreeSet,
+	graph::{Graph, GraphNode},
 	hash_map::HashMap,
 	hash_set::HashSet,
 	hash_table::HashTable,
@@ -15,7 +17,7 @@ pub use self::{
 	vec::Vec,
 };
 #[doc(inline)]
-pub use crate::external::{
+pub use {
 	alloc::{
 		boxed::Box,
 		collections::{binary_heap, btree_map, btree_set},
@@ -24,14 +26,49 @@ pub use crate::external::{
 	hashbrown::{hash_map, hash_set, hash_table},
 };
 
+use crate::lang::UnsignedInteger;
+
+//
+// IndexSize
+//
+
+/// Utility trait for any number that can index into a list.
+#[rustfmt::skip]
+pub const trait IndexSize: UnsignedInteger {
+	/// Casts the number to a [`usize`].
+	fn as_usize(self) -> usize;
+	/// Casts a [`usize`] to this number type.
+	fn usize_as_self(usize: usize) -> Self;
+}
+
+macro_rules! impl_nums {
+	($($ty:ty)*) => {
+		$(
+			impl const IndexSize for $ty {
+				fn as_usize(self) -> usize {
+					self as usize
+				}
+				fn usize_as_self(usize: usize) -> Self {
+					usize as Self
+				}
+			}
+		)*
+	};
+}
+impl_nums!(u8 u16 u32 u64 u128 usize);
+
+//
+// Arena types
+//
+
 pub mod arena {
 	//! Variants of standard allocated data structures that are backed by arena
 	//! allocators.
 
 	use crate::{
-		data_structures::sized_vec::IndexSize,
+		data_structures::IndexSize,
 		lang::UnsafeCell,
-		os::mem::{ArenaAllocator, ArenaPreallocationError, MemoryAmount},
+		os::mem::{ArenaPreallocationError, MemoryAmount, VirtualMemoryArena},
 	};
 
 	/// A vector backed by an arena allocator.
@@ -45,13 +82,15 @@ pub mod arena {
 	///    scenarios.
 	/// 2. It calls `drop` on objects in the vec when the vec is dropped. The
 	///    standalone arena allocator does not do this.
-	pub struct ArenaVec<T, S: const IndexSize = usize>(UnsafeCell<SizedVec<T, S, ArenaAllocator>>);
+	pub struct ArenaVec<T, S: const IndexSize = usize>(
+		UnsafeCell<SizedVec<T, S, VirtualMemoryArena>>,
+	);
 	impl<T, S: const IndexSize> ArenaVec<T, S> {
 		/// Reserve virtual memory for a new arena-backed vector. Errors if
 		/// reserving virtual memory fails.
 		pub fn new(to_reserve: MemoryAmount) -> Result<Self, ()> {
 			Ok(Self(UnsafeCell::new(SizedVec::with_allocator(
-				ArenaAllocator::new(to_reserve)?,
+				VirtualMemoryArena::new(to_reserve)?,
 			))))
 		}
 		/// Reserve virtual memory for a new arena-backed vector, then
@@ -61,7 +100,7 @@ pub mod arena {
 			to_commit: MemoryAmount,
 		) -> Result<Self, ArenaPreallocationError> {
 			Ok(Self(UnsafeCell::new(SizedVec::with_allocator(
-				ArenaAllocator::new_preallocate(to_reserve, to_commit)?,
+				VirtualMemoryArena::new_preallocate(to_reserve, to_commit)?,
 			))))
 		}
 
@@ -75,13 +114,13 @@ pub mod arena {
 			unsafe { &mut *self.0.get() }.extend_slice(slice);
 		}
 	}
-	impl<T, S: const IndexSize> From<ArenaAllocator> for ArenaVec<T, S> {
-		fn from(value: ArenaAllocator) -> Self {
+	impl<T, S: const IndexSize> From<VirtualMemoryArena> for ArenaVec<T, S> {
+		fn from(value: VirtualMemoryArena) -> Self {
 			Self(UnsafeCell::new(SizedVec::with_allocator(value)))
 		}
 	}
 	impl<T, S: const IndexSize> const Deref for ArenaVec<T, S> {
-		type Target = SizedVec<T, S, ArenaAllocator>;
+		type Target = SizedVec<T, S, VirtualMemoryArena>;
 
 		fn deref(&self) -> &Self::Target {
 			unsafe { &*self.0.get() }
@@ -156,7 +195,7 @@ pub mod arena {
 }
 
 pub mod typed_vec {
-	use crate::data_structures::sized_vec::IndexSize;
+	use crate::data_structures::IndexSize;
 
 	pub trait TypedVecIndex: Clone + Copy {
 		type Index: const IndexSize;

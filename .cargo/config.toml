@@ -3,8 +3,5 @@ build-std = [
 	"compiler_builtins",
 	"core",
 	"alloc",
-	"libc",
-	"hashbrown",
-	"test",
-	"std",
 ]
+panic-abort-tests = true

@@ -1,6 +1,6 @@
 //! Items for working directly with memory and allocations.
 
-use crate::{external::libc, lang::*, os};
+use crate::{lang::*, os};
 
 //
 //
@@ -8,7 +8,7 @@ use crate::{external::libc, lang::*, os};
 //
 //
 
-pub use external::{
+pub use {
 	alloc::alloc::Global as GlobalAllocator,
 	core::{alloc::GlobalAlloc, prelude::rust_2024::global_allocator},
 };
@@ -333,6 +333,10 @@ pub unsafe fn free(ptr: NonNull<()>, amount: MemoryAmount) {
 //
 
 /// Allocates memory using OS' virtual memory APIs.
+///
+/// This allocator is *always* available to the program, even before Crux's
+/// runtime has been loaded.
+#[derive(Clone, Copy, Default, Debug)]
 pub struct OsAllocator;
 unsafe impl Allocator for OsAllocator {
 	fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
@@ -341,8 +345,9 @@ unsafe impl Allocator for OsAllocator {
 			.map(|ptr| NonNull::slice_from_raw_parts(ptr.cast(), amount.amount_bytes()))
 			.map_err(|()| AllocError)
 	}
-	// Windows: VirtualAlloc zeroes memory by default
-	// Unix: Using MAP_ANONYMOUS zeroes the memory by default
+	// No need to separately zero allocated memory on these platforms:
+	// - Windows: VirtualAlloc zeroes memory by default
+	// - Unix: We use MAP_ANONYMOUS, which zeroes the memory by default
 	#[cfg(any(windows, unix))]
 	fn allocate_zeroed(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
 		self.allocate(layout)
@@ -398,7 +403,7 @@ pub enum ArenaPreallocationError {
 ///
 /// See [`ReservedMemory`] for more information about reserved virtual memory
 /// and how it allows creating growable buffers that never move.
-pub struct ArenaAllocator {
+pub struct VirtualMemoryArena {
 	/// Total reserved memory for this arena. Committed memory could (in theory)
 	/// use up to this amount of memory.
 	pub reserved: ReservedMemory,
@@ -407,8 +412,8 @@ pub struct ArenaAllocator {
 	/// The amount of committed memory that's been allocated already.
 	pub used: Cell<MemoryAmount>,
 }
-impl ArenaAllocator {
-	/// Create a new arena allocator with the given amount of reserved virtual
+impl VirtualMemoryArena {
+	/// Allocate a new arena allocator with the given amount of reserved virtual
 	/// memory. Fails if the OS fails to reserve virtual memory.
 	pub fn new(to_reserve: MemoryAmount) -> Result<Self, ()> {
 		Ok(Self {
@@ -418,7 +423,7 @@ impl ArenaAllocator {
 		})
 	}
 
-	/// Create a new arena allocator with the given amount of reserved virtual
+	/// Allocate a new arena allocator with the given amount of reserved virtual
 	/// memory, then preallocate the given amount of memory by committing it.
 	///
 	/// Fails if the OS fails to reserve virtual memory, or if committing the
@@ -481,7 +486,7 @@ impl ArenaAllocator {
 		let commited = self.committed.get();
 		let used = self.used.get();
 
-		Ok(ArenaAllocator {
+		Ok(VirtualMemoryArena {
 			reserved: self.reserved.select(used, amount)?,
 			committed: Cell::new(commited - used),
 			used: Cell::new(MemoryAmount::ZERO),
@@ -501,7 +506,7 @@ impl ArenaAllocator {
 
 		safety_assert!(amount < self.available_total_memory());
 
-		ArenaAllocator {
+		VirtualMemoryArena {
 			reserved: unsafe { self.reserved.select_unchecked(used, amount) },
 			committed: Cell::new(commited - used),
 			used: Cell::new(MemoryAmount::ZERO),
@@ -522,7 +527,7 @@ impl ArenaAllocator {
 		self.committed.get() - self.used.get()
 	}
 }
-unsafe impl Allocator for ArenaAllocator {
+unsafe impl Allocator for VirtualMemoryArena {
 	fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
 		// aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 		let committed = self.committed.get();
@@ -561,7 +566,7 @@ unsafe impl Allocator for ArenaAllocator {
 	}
 	unsafe fn deallocate(&self, _ptr: NonNull<u8>, _layout: Layout) {}
 }
-impl Drop for ArenaAllocator {
+impl Drop for VirtualMemoryArena {
 	fn drop(&mut self) {
 		unsafe {
 			uncommit(

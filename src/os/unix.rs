@@ -1,10 +1,12 @@
 //! Unix API bindings.
 
-use crate::{
-	external::libc,
-	ffi::*,
-	io::Writer,
-	lang::{Option, mem::NonNull},
+use {
+	crate::{
+		ffi::*,
+		io::Writer,
+		lang::{Option, mem::NonNull},
+	},
+	libc,
 };
 
 /// An identifier for a currently open Unix file.

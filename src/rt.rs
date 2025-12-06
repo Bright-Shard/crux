@@ -22,19 +22,24 @@
 
 pub mod backtrace;
 pub mod entrypoint;
+pub mod hook;
 
 #[cfg(target_os = "windows")]
 use crate::mem::NonNull;
 use crate::{
-	external::libc,
+	ffi::c_void,
 	lang::{
 		self, Layout, MaybeUninit, cfg,
 		mem::{addr_of, addr_of_mut},
 		panic,
 	},
-	logging::{Log, Logger, SyncLogger},
+	logging::{Log, SyncLogger},
 	os,
 };
+
+#[cfg(all(test, feature = "test-harness"))]
+pub use test_harness::*;
+pub use {backtrace::*, entrypoint::*, hook::*};
 
 //
 //
@@ -43,6 +48,7 @@ use crate::{
 //
 
 /// Operating systems supported by Crux.
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub enum Os {
 	Linux,
 	MacOs,
@@ -158,9 +164,21 @@ pub unsafe fn set_logger(mut logger: &'static dyn SyncLogger) {
 //
 //
 
+event! {
+	/// An event Crux calls after the binary has been loaded in-memory.
+	///
+	/// Crux defines two hooks for this event:
+	/// - [`rt_startup`]: Loads the Crux runtime.
+	/// - [`call_main`]: Calls the `crux_main` function. Only used if the `main`
+	///   crate feature is enabled.
+	startup,
+	fn(StartupHookInfo)
+}
+
 /// Information that needs to be passed to [`startup_hook`]. Note that this
 /// struct's fields are platform-specific, since different platforms need
 /// different data at startup.
+#[derive(Clone, Copy)]
 pub struct StartupHookInfo {
 	/// On Unix, the main function gets `argc` and `argv` parameters, which seem
 	/// to be the only way to get the program's CLI arguments. Here we pass
@@ -169,9 +187,8 @@ pub struct StartupHookInfo {
 	pub args: &'static [*const u8],
 }
 
-/// A function that must be called at startup by all binaries using Crux.
-/// Not calling this function at startup will lead to undefined behaviour. It
-/// should be the first thing a program calls when it launches.
+/// A function that must be called at startup by all binaries using Crux. Don't
+/// call it yourself unless you know what you're doing.
 ///
 /// Currently, this function just loads the [`RUNTIME_INFO`] global.
 ///
@@ -179,15 +196,16 @@ pub struct StartupHookInfo {
 /// # Safety
 ///
 /// This function should only be called one time, at program start, and never
-/// again.
+/// again. It's not marked as unsafe so it can conform to the function signature
+/// expected by the startup event.
 ///
-/// It updates global static data and can therefore cause race conditions in
-/// concurrent code. Call it before starting any concurrency runtime.
+/// This function updates global static data and can therefore cause race
+/// conditions in concurrent code.
 ///
 /// Many Crux APIs assume this function has been called already when they run,
-/// because it loads important OS information used by those APIs. This function
-/// should be called as early as possible in the program's startup code.
-pub unsafe fn startup_hook(info: StartupHookInfo) {
+/// because it loads important OS information used by those APIs. Using Crux
+/// APIs before this hook has run may lead to UB.
+pub fn startup_hook(info: StartupHookInfo) {
 	fn args_to_utf8(raw: &'static [&'static [u8]]) -> &'static [&'static str] {
 		let str_len = raw.iter().map(|buf| buf.len()).sum();
 		let string: ArenaString<usize> = ArenaString::new_preallocate(
@@ -258,4 +276,122 @@ pub unsafe fn startup_hook(info: StartupHookInfo) {
 
 	let global = unsafe { &mut *addr_of_mut!(RUNTIME_INFO) };
 	global.write(runtime_info);
+}
+hook::hook! {
+	/// See [`crate::rt::startup_hook`].
+	event: crate::events::startup,
+	func: startup_hook,
+	constraints: []
+}
+
+//
+//
+// Information stored in the binary
+//
+//
+
+/// Crate types that Crux crates can be compiled as.
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[repr(u8)]
+pub enum CrateType {
+	/// The crate is a benchmark that Cargo will run.
+	Benchmark = 0,
+	/// The crate is being compiled as an executable the user can run.
+	Binary = 1,
+	/// The crate is being compiled as a dynamic library (`cdylib`) that other
+	/// executables can load at runtime.
+	Cdylib = 2,
+	/// The crate is an example in a library crate.
+	Example = 3,
+	/// The crate is a set of unit or integration tests.
+	Test = 4,
+}
+
+// Variables defined in the linker script set by `crux-build`
+// Note that you can't get the value of these by reading the static (hence why
+// their types are all set to `c_void`). You instead read the value by calling
+// `addr_of!(static)`... which will then return a pointer that you can cast to
+// a number to get the value.
+//
+// For example, `__crux_crate_type` is set to a number between 0 and 4 in the
+// linker scripts. However, reading `__crux_crate_type` is (afaik) straight up
+// UB. Instead, you call `addr_of!(__crux_crate_type)` and cast the resulting
+// pointer to a u8, which will then have the number between 0 and 4.
+unsafe extern "C" {
+	static __crux_ini_start: c_void;
+	static __crux_ini_end: c_void;
+	static __crux_crate_type: c_void;
+}
+
+/// Returns function pointers for all functions that have been registered as ini
+/// functions.
+///
+/// Ini functions are special Crux functions that run before anything else in
+/// the Crux application - even before the Crux runtime itself is loaded. They
+/// are currently mostly used to implement Crux's event and hook system (see
+/// the [`hook`] module).
+///
+/// Ini functions are *always* unsafe because they run before global variables
+/// and the Crux runtime have been initialized. If you want to write code that
+/// runs before the `main` function, but after the Crux runtime has loaded, you
+/// should look at the [`startup` event] instead.
+///
+/// [`startup` event]: crate::events::startup
+pub fn ini_functions() -> &'static [unsafe fn()] {
+	let ini_start = addr_of!(__crux_ini_start) as usize;
+	let ini_end = addr_of!(__crux_ini_end) as usize;
+	let size = ini_end - ini_start;
+	let len = size / (usize::BITS as usize / 8);
+	unsafe { &*lang::slice_from_raw_parts(addr_of!(__crux_ini_start) as *const unsafe fn(), len) }
+}
+/// Returns the [`CrateType`] of the final compiled app Crux is being used in.
+pub fn crate_type() -> CrateType {
+	let val = addr_of!(__crux_crate_type) as usize as u8;
+	unsafe { lang::transmute(val) }
+}
+
+/// Register a function as an ini function.
+///
+/// Usage: `register_ini_function!(function_name);`
+///
+/// For more information about ini functions, see [`ini_functions`].
+#[macro_export]
+macro_rules! register_ini_function {
+	($func:ident) => {
+		#[unsafe(link_section = ".crux.ini")]
+		#[used]
+		static INI_FUNC: unsafe fn() = $func;
+	};
+}
+pub use crate::register_ini_function;
+
+//
+//
+// Test harness
+//
+//
+
+/// Provides a harness for running functions decorated with `#[test]` via
+/// `cargo test`.
+pub mod test_harness {
+	crate::rt::event! {
+		/// This event is used by the Crux test harness. All tests that should be
+		/// run should register with this event.
+		///
+		/// For convenience, Crux exposes a [`#[test]`] attribute macro. Putting
+		/// that on any function will register it with this event.
+		///
+		/// [`#[test]`]: crux_macros::test
+		run_tests, fn()
+	}
+
+	/// Runs all tests registered in this Crux binary.
+	pub fn run_all_tests() {
+		let event = unsafe { run_tests::EVENT.solve() }.expect(
+			"Crux CRITICAL ERROR: Failed to solve `run_tests` event, cannot run unit tests",
+		);
+		for hook in event.as_slice() {
+			hook()
+		}
+	}
 }

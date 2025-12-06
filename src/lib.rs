@@ -10,6 +10,8 @@
 #![feature(trim_prefix_suffix)]
 #![feature(rustc_private)]
 #![feature(const_convert)]
+#![feature(const_default)]
+#![feature(step_trait)]
 #![no_main]
 #![no_std]
 
@@ -20,22 +22,29 @@ pub mod data_structures;
 pub mod ffi;
 pub mod lang;
 pub mod logging;
-pub mod num;
 pub mod os;
 pub mod rt;
 #[cfg(feature = "term")]
 pub mod term;
 pub mod test;
 
-#[doc(hidden)] // prevent rust-analyzer from importing from external::core
-pub use external;
+pub extern crate alloc;
+pub extern crate core;
+pub use crux_macros as macros;
+
+pub mod hooks {
+	pub use crate::rt::{entrypoint::call_main, startup_hook};
+}
+pub mod events {
+	pub use crate::rt::{startup, test_harness::run_tests};
+}
 
 pub mod prelude {
 	//! Exports most useful types/functions in Crux that are unlikely to collide
 	//! with the names of existing types/functions.
 
 	pub use crate::{
-		bitset,
+		self as crux, bitset,
 		crypto::hash::Hash,
 		data_structures::{
 			ArenaString, ArenaVec, BTreeMap, BTreeSet, BinaryHeap, Box, HashMap, HashSet,
@@ -49,14 +58,13 @@ pub mod prelude {
 			transmute, transmute_copy, unreachable,
 		},
 		logging::{error, fatal, info, trace, warn},
+		macros::test,
 		os::{
-			mem::{ArenaAllocator, GlobalAllocator, MemoryAmount},
+			mem::{GlobalAllocator, MemoryAmount, VirtualMemoryArena},
 			proc::{print, println},
 		},
-		test::{
-			assert, assert_eq, assert_ne, safety_assert, safety_assert_eq, safety_assert_ne, test,
-		},
-		text::{CString, Debug, String},
+		test::{assert, assert_eq, assert_ne, safety_assert, safety_assert_eq, safety_assert_ne},
+		text::{CString, Debug, String, format},
 	};
 }
 
@@ -100,7 +108,7 @@ pub mod io {
 		///
 		/// [`format_args`]: crate::text::format_args
 		fn write_fmt(&mut self, args: FormatArgs) -> Result<(), ()> {
-			external::core::fmt::write(&mut FmtWriter(self), args).map_err(|_| ())
+			core::fmt::write(&mut FmtWriter(self), args).map_err(|_| ())
 		}
 		/// Some data sources need to be "flushed" for written bytes to actually
 		/// be transferred. This method would flush the data source so all
@@ -109,11 +117,9 @@ pub mod io {
 	}
 
 	pub struct FmtWriter<'a>(&'a mut dyn AnyWriter);
-	impl external::core::fmt::Write for FmtWriter<'_> {
-		fn write_str(&mut self, s: &str) -> external::core::fmt::Result {
-			self.0
-				.write_all(s.as_bytes())
-				.map_err(|_| external::core::fmt::Error)
+	impl core::fmt::Write for FmtWriter<'_> {
+		fn write_str(&mut self, s: &str) -> core::fmt::Result {
+			self.0.write_all(s.as_bytes()).map_err(|_| core::fmt::Error)
 		}
 	}
 
@@ -169,7 +175,7 @@ pub mod text {
 	//! Functions and types for working with text.
 
 	#[doc(inline)]
-	pub use external::{
+	pub use {
 		alloc::{ffi::CString, fmt::format, format, string::String},
 		core::{
 			concat,

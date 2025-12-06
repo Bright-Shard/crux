@@ -2,22 +2,49 @@
 name = "crux"
 version = "0.1.0"
 edition = "2024"
+links = "crux"
 
 [workspace]
 members = [
+	"crates/crux-build",
+	"crates/crux-macros", "crates/crux-macros-impl",
+	"crates/crux-rust-ast",
 	"examples/cli",
 	"examples/logging",
 	"examples/testing",
-	"external",
 	"tests",
 ]
-dependencies.crux.path = "."
+[workspace.dependencies]
+crux.path = "."
+crux-macros.path = "crates/crux-macros"
+crux-build.path = "crates/crux-build"
+crux-rust-ast.path = "crates/crux-rust-ast"
 
 [lib]
 harness = false
 
 [dependencies]
-external.path = "external"
+hashbrown = { version = "0.15", default-features = false, features = [
+	"default-hasher",
+	"inline-more",
+	"nightly",
+] }
+crux-macros.workspace = true
+
+[target.'cfg(target_family = "unix")'.dependencies]
+# libc constants can change from platform to platform, so instead of trying to
+# track those ourselves we let the Rust team handle it
+libc = { version = "0.2", default-features = false, features = [] }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+#
+# CRUX FEATURE FLAGS & DOCUMENTATION
+#
 
 [features]
 default = [
@@ -26,23 +53,23 @@ default = [
 	"logging",
 	"term",
 	"concurrency",
+	"test-harness"
 ]
 # Registers crux::os::mem::OsAllocator as the global allocator.
 global-os-allocator = []
 # Provides a default panic handler, which simply logs the panic as a fatal log,
-# then exits the process (on supported OSes) or spin loops.
+# then exits the process (on supported OSes), or spin-loops (on unsupported
+# OSes).
 logging-panic-handler = ["logging"]
-# Enables additional memory safety checks in various unsafe functions.
+# Enables additional memory safety checks in various unsafe functions. These
+# could be nice to have while developing with Crux, but you probably want to
+# disable this flag in production for a bit of extra performance.
 safety-checks = []
 # Enables logging functionality.
 logging = []
-# Enables the `term` module
+# Enables the `term` module.
 term = []
-# Enables the `concurrency` module
+# Enables the `concurrency` module.
 concurrency = []
-
-[profile.dev]
-panic = "abort"
-
-[profile.release]
-panic = "abort"
+# Provides a testing harness for `cargo t` when compiled in test mode.
+test-harness = []

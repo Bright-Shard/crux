@@ -67,7 +67,7 @@ pub enum LogLevel {
 	Fatal,
 }
 impl Display for LogLevel {
-	fn fmt(&self, f: &mut external::core::fmt::Formatter<'_>) -> external::core::fmt::Result {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.write_str(match self {
 			Self::Trace => "TRACE",
 			Self::Info => "INFO",

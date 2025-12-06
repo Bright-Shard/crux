@@ -1,13 +1,17 @@
 //! Items dealing with cryptography.
 
+pub use hash::*;
+
 pub mod hash {
 	//! Hashing traits and implementations.
 
 	#[allow(deprecated)]
-	pub use crate::external::core::hash::{
-		BuildHasher, BuildHasherDefault, Hash, Hasher, SipHasher,
+	pub use {
+		core::hash::{BuildHasher, BuildHasherDefault, Hash, Hasher, SipHasher},
+		hashbrown::DefaultHashBuilder,
 	};
-	pub type FoldHasher = <crate::external::hashbrown::DefaultHashBuilder as BuildHasher>::Hasher;
+	pub type FoldHashBuilder = DefaultHashBuilder;
+	pub type FoldHasher = <DefaultHashBuilder as BuildHasher>::Hasher;
 }
 
 // TODO:

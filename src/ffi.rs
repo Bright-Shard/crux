@@ -7,7 +7,7 @@
 //
 
 #[doc(inline)]
-pub use crate::external::{
+pub use {
 	alloc::ffi::CString,
 	core::ffi::{
 		CStr, c_char, c_double, c_float, c_int, c_long, c_longlong, c_schar, c_short, c_str,

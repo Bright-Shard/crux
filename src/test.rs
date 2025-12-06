@@ -7,7 +7,7 @@
 //
 
 pub use {
-	external::core::{
+	core::{
 		assert, assert_eq, assert_ne, debug_assert, debug_assert_eq, debug_assert_ne,
 		prelude::rust_2024::test,
 	},

@@ -9,6 +9,9 @@ macro_rules! def_cfg {
 }
 
 fn main() {
+	let root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+	let root = std::path::Path::new(&root);
+
 	def_cfg! {
 		["linux": target_os = "linux"]
 		["macos": target_os = "macos"]
@@ -16,4 +19,5 @@ fn main() {
 		["safety_checks": feature = "safety-checks"]
 		["logging": feature = "logging"]
 	};
+	println!("cargo::metadata=ROOT={}", root.display());
 }

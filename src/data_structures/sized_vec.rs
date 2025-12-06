@@ -1,12 +1,13 @@
 use crate::{
+	data_structures::IndexSize,
 	io::Writer,
 	lang::{
+		self, Integer,
 		iter::*,
 		mem::{self, Layout},
 		op::*,
 		size_of, slice_from_raw_parts, slice_from_raw_parts_mut,
 	},
-	num::Integer,
 	prelude::*,
 };
 
@@ -76,6 +77,32 @@ impl<T, S: const IndexSize, A: Allocator> SizedVec<T, S, A> {
 			alloc: allocator,
 		}
 	}
+
+	/// Returns a new vector of the given type, with its length set to zero.
+	/// This effectively lets you reuse this vector's allocation to store an
+	/// entirely new list of items.
+	pub fn reuse<U>(self) -> SizedVec<U, S, A> {
+		let this = ManuallyDrop::new(self);
+
+		unsafe {
+			SizedVec {
+				capacity: this.capacity,
+				len: S::ZERO,
+				base_ptr: this.base_ptr.cast(),
+				alloc: lang::read_ptr(&this.alloc),
+			}
+		}
+	}
+}
+impl<T, S: const IndexSize, A: Allocator + Clone> Clone for SizedVec<T, S, A> {
+	fn clone(&self) -> Self {
+		let mut res = Self::with_allocator_and_capacity(self.alloc.clone(), self.len);
+		unsafe {
+			crate::lang::copy_nonoverlapping(self.as_ptr(), res.as_mut_ptr(), self.len.as_usize())
+		};
+
+		res
+	}
 }
 
 impl<T, S: const IndexSize, A: Allocator> Drop for SizedVec<T, S, A> {
@@ -119,38 +146,71 @@ pub enum SizedVecGrowthError {
 	/// where `S` is the vector's index type.
 	MaxPossibleCapacity,
 }
+/// An error that occurred while calling [`SizedVec::try_insert`].
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SizedVecInsertError {
+	/// The index to insert at was past the end of the vector.
+	IndexPastEnd,
+	/// The vector tried to reallocate to have enough space for another element,
+	/// but reallocation failed.
+	GrowthError(SizedVecGrowthError),
+}
+impl From<SizedVecGrowthError> for SizedVecInsertError {
+	fn from(value: SizedVecGrowthError) -> Self {
+		Self::GrowthError(value)
+	}
+}
 
 impl<T, S: const IndexSize, A: Allocator> SizedVec<T, S, A> {
 	pub fn push(&mut self, item: T) -> &mut T {
 		self.try_push(item).unwrap()
 	}
-	pub fn try_push(&mut self, item: T) -> Result<&mut T, ()> {
-		if self.len == self.capacity {
-			if self.capacity == S::ZERO {
-				self.base_ptr = self
-					.alloc
-					.allocate(Self::layout(Self::BASE_ALLOC_COUNT))
-					.unwrap()
-					.cast();
-			} else if self.capacity == S::MAX {
-				return Err(());
-			} else {
-				self.base_ptr = unsafe {
-					self.alloc
-						.grow(
-							self.base_ptr.cast(),
-							Self::layout(self.capacity),
-							Self::layout(self.capacity.saturating_mul(S::TWO)),
-						)
-						.unwrap()
-						.cast()
-				};
-			}
-		}
+	pub fn try_push(&mut self, item: T) -> Result<&mut T, SizedVecGrowthError> {
+		self.ensure_additional_capacity(S::ONE)?;
 
-		let ptr = unsafe { &mut *self.base_ptr.add(self.len.as_usize()).as_ptr() };
+		let ptr = unsafe { self.base_ptr.add(self.len.as_usize()).as_mut() };
 		self.len += S::ONE;
 		Ok(ptr.write(item))
+	}
+
+	/// Attempt to insert an item into the vector at the specified index.
+	///
+	/// This adds an item to the vector, similar to [`SizedVec::push`], but the
+	/// item is added at a specific index instead of at the end of the vector.
+	/// Any items already in the vector that are at or past the specified index
+	/// get shifted one slot to the right. Therefore this method incurs more
+	/// overhead than [`SizedVec::push`].
+	///
+	/// This method call may panic; for the non-panicking version, see
+	/// [`SizedVec::try_insert`]. For errors that may cause a panic, see
+	/// [`SizedVecInsertError`].
+	pub fn insert(&mut self, idx: S, item: T) -> &mut T {
+		self.try_insert(idx, item).unwrap()
+	}
+	/// Attempt to insert an item into the vector at the specified index.
+	///
+	/// This adds an item to the vector, similar to [`SizedVec::push`], but the
+	/// item is added at a specific index instead of at the end of the vector.
+	/// Any items already in the vector that are at or past the specified index
+	/// get shifted one slot to the right. Therefore this method incurs more
+	/// overhead than [`SizedVec::push`].
+	///
+	/// See [`SizedVecInsertError`] for how this method may error.
+	pub fn try_insert(&mut self, idx: S, item: T) -> Result<&mut T, SizedVecInsertError> {
+		if idx > self.len {
+			return Err(SizedVecInsertError::IndexPastEnd);
+		}
+
+		self.ensure_additional_capacity(S::ONE)?;
+
+		unsafe {
+			let mut target = self.base_ptr.add(idx.as_usize());
+
+			target.copy_to(target.add(1), (self.len - idx).as_usize());
+
+			self.len += S::ONE;
+			Ok(target.as_mut().write(item))
+		}
 	}
 
 	/// Attempts to reallocate the vector so it has enough capacity for `count`
@@ -219,6 +279,7 @@ impl<T, S: const IndexSize, A: Allocator> SizedVec<T, S, A> {
 				};
 			}
 
+			self.capacity = count;
 			Ok(())
 		} else if self.len < count {
 			self.base_ptr = unsafe {
@@ -285,16 +346,30 @@ impl<T, S: const IndexSize, A: Allocator> SizedVec<T, S, A> {
 		unsafe { &mut *slice_from_raw_parts_mut(dest, slice.len()) }
 	}
 
+	/// Removes the last item from the vector, and returns it, as long as the
+	/// vector isn't empty.
+	pub fn pop(&mut self) -> Option<T> {
+		if self.is_empty() {
+			return None;
+		}
+
+		let new_len = self.len - S::ONE;
+		let res = Some(unsafe { lang::read_ptr(self.get_unchecked(new_len)) });
+		self.len = new_len;
+
+		res
+	}
+
 	/// If the vector contains 0 elements.
 	pub fn is_empty(&self) -> bool {
 		self.len == S::ZERO
 	}
 	/// How many elements the vector has.
-	pub fn len(&self) -> S {
+	pub const fn len(&self) -> S {
 		self.len
 	}
 	/// How many elements the vector can store without reallocating.
-	pub fn capacity(&self) -> S {
+	pub const fn capacity(&self) -> S {
 		self.capacity
 	}
 	/// How many additional elements can be pushed to the vector before it has
@@ -389,15 +464,6 @@ impl<T, S: const IndexSize, A: Allocator> const DerefMut for SizedVec<T, S, A> {
 //
 //
 
-/// Implemented for various-sized types that can index into a [`SizedVec`].
-#[rustfmt::skip]
-pub const trait IndexSize: Integer {
-	/// Casts the number to a [`usize`].
-	fn as_usize(self) -> usize;
-	/// Casts a [`usize`] to this number type.
-	fn usize_as_self(usize: usize) -> Self;
-}
-
 /// Implemented for types that can be used in the indexing operation (`[]`) for
 /// [`SizedVec`]s.
 pub trait SizedVecIndexOp<T, S: const IndexSize, A: Allocator> {
@@ -424,38 +490,23 @@ pub trait SizedVecIndexOp<T, S: const IndexSize, A: Allocator> {
 	fn index_mut(self, vec: &mut SizedVec<T, S, A>) -> Option<&mut Self::Output>;
 }
 
-macro_rules! impl_nums {
-	($($ty:ty)*) => {
-		$(
-			impl const IndexSize for $ty {
-				fn as_usize(self) -> usize {
-					self as usize
-				}
-				fn usize_as_self(usize: usize) -> Self {
-					usize as Self
-				}
-			}
-			impl<T, A: Allocator> SizedVecIndexOp<T, Self, A> for $ty {
-				type Output = T;
+impl<T, S: const IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for S {
+	type Output = T;
 
-				unsafe fn index_unchecked(self, vec: &SizedVec<T, Self, A>) -> &Self::Output {
-					unsafe { vec.get_unchecked(self) }
-				}
-				fn index(self, vec: &SizedVec<T, Self, A>) -> Option<&Self::Output> {
-					vec.get(self)
-				}
+	unsafe fn index_unchecked(self, vec: &SizedVec<T, Self, A>) -> &Self::Output {
+		unsafe { vec.get_unchecked(self) }
+	}
+	fn index(self, vec: &SizedVec<T, Self, A>) -> Option<&Self::Output> {
+		vec.get(self)
+	}
 
-				unsafe fn index_mut_unchecked(self, vec: &mut SizedVec<T, Self, A>) -> &mut Self::Output {
-					unsafe { vec.get_mut_unchecked(self) }
-				}
-				fn index_mut(self, vec: &mut SizedVec<T, Self, A>) -> Option<&mut Self::Output> {
-					vec.get_mut(self)
-				}
-			}
-		)*
-	};
+	unsafe fn index_mut_unchecked(self, vec: &mut SizedVec<T, Self, A>) -> &mut Self::Output {
+		unsafe { vec.get_mut_unchecked(self) }
+	}
+	fn index_mut(self, vec: &mut SizedVec<T, Self, A>) -> Option<&mut Self::Output> {
+		vec.get_mut(self)
+	}
 }
-impl_nums!(u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 usize isize);
 
 impl<T, S: const IndexSize, A: Allocator> SizedVecIndexOp<T, S, A> for Range<S> {
 	type Output = [T];
@@ -733,6 +784,14 @@ impl<T, S: const IndexSize, A: Allocator, SO: SizedVecIndexOp<T, S, A>> IndexMut
 		index.index_mut(self).unwrap()
 	}
 }
+
+//
+//
+// Iterator
+//
+//
+
+// TODO
 
 //
 //

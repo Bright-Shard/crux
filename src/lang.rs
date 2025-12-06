@@ -14,13 +14,13 @@
 //
 //
 
-pub use {compiler::*, essential::*, iter::*, mem::*, op::*};
+pub use {compiler::*, essential::*, iter::*, mem::*, op::*, reflect::*, xstat::*};
 
 pub mod op {
 	//! Traits that overload operators.
 
 	#[doc(inline)]
-	pub use external::core::{
+	pub use core::{
 		cmp::{Eq, Ord, PartialEq, PartialOrd},
 		ops::{
 			Add, AddAssign, AsyncFn, AsyncFnMut, AsyncFnOnce, BitAnd, BitAndAssign, BitOr,
@@ -35,7 +35,7 @@ pub mod essential {
 	//! Items used in pretty much every Rust program.
 
 	#[doc(inline)]
-	pub use external::core::{
+	pub use core::{
 		cfg,
 		clone::Clone,
 		convert::Infallible, // TODO does this belong here?
@@ -55,8 +55,9 @@ pub mod compiler {
 	//! Items that interact with the Rust compiler and type system.
 
 	#[doc(inline)]
-	pub use external::core::{
+	pub use core::{
 		any::{Any, TypeId, type_name, type_name_of_val},
+		cmp::Ordering,
 		column, compile_error, file,
 		hint::{assert_unchecked, black_box, select_unpredictable, unreachable_unchecked},
 		line,
@@ -75,7 +76,7 @@ pub mod mem {
 	//! ownership, allocations, etc.
 
 	#[doc(inline)]
-	pub use external::{
+	pub use {
 		alloc::borrow::{Cow, ToOwned},
 		core::{
 			alloc::{AllocError, Allocator, Layout, LayoutError},
@@ -85,9 +86,10 @@ pub mod mem {
 			ptr::{
 				self, NonNull, addr_of, addr_of_mut, copy, copy_nonoverlapping,
 				dangling as dangling_ptr, dangling_mut as dangling_ptr_mut, drop_in_place,
-				null as null_ptr, null_mut as null_ptr_mut, replace as replace_ptr,
-				slice_from_raw_parts, slice_from_raw_parts_mut, swap as swap_ptr,
-				swap_nonoverlapping,
+				null as null_ptr, null_mut as null_ptr_mut, read as read_ptr,
+				read_unaligned as read_unaligned_ptr, read_volatile as read_volatile_ptr,
+				replace as replace_ptr, slice_from_raw_parts, slice_from_raw_parts_mut,
+				swap as swap_ptr, swap_nonoverlapping,
 			},
 		},
 	};
@@ -172,7 +174,7 @@ pub mod mem {
 	}
 
 	impl NonNullConst<c_char> {
-		/// Convert this pointer to a [`c_char`] to a [`CStr`].
+		/// Convert this [`c_char`] pointer to a [`CStr`].
 		///
 		///
 		/// # Safety
@@ -188,13 +190,98 @@ pub mod mem {
 pub mod iter {
 	//! Items for working with iterators.
 
-	pub use external::core::iter::{Extend, IntoIterator, Iterator};
+	pub use core::iter::{Extend, IntoIterator, Iterator};
 }
 
 pub mod panic {
 	//! Items for dealing with Rust's panicking runtime.
 
-	pub use crate::external::core::panic::{
+	pub use crate::core::panic::{
 		AssertUnwindSafe, Location, PanicInfo, PanicMessage, RefUnwindSafe, UnwindSafe,
 	};
 }
+
+pub mod xstat {
+	//! xstat is a module similar to
+	//! [dtolnay's `inventory` crate](https://github.com/dtolnay/inventory)
+	//! that allows for cross-crate communication via statics (shortened to
+	//! cross-statics, or xstat).
+
+	use crate::lang::UnsafeCell;
+
+	pub struct XStat<T: 'static + ?Sized> {
+		pub base: UnsafeCell<Option<&'static XStatEntry<T>>>,
+		pub head: UnsafeCell<Option<&'static XStatEntry<T>>>,
+	}
+	impl<T: 'static + ?Sized> const Default for XStat<T> {
+		fn default() -> Self {
+			Self {
+				base: UnsafeCell::new(None),
+				head: UnsafeCell::new(None),
+			}
+		}
+	}
+	impl<T: 'static + ?Sized> XStat<T> {
+		/// # Safety
+		///
+		/// This function cannot be called in concurrent contexts.
+		pub unsafe fn push(&self, stat: &'static XStatEntry<T>) {
+			if let Some(head) = unsafe { &mut *self.head.get() } {
+				unsafe { *head.next.get() = Some(stat) };
+				*head = stat;
+			} else {
+				unsafe { *self.base.get() = Some(stat) };
+				unsafe { *self.head.get() = Some(stat) };
+			}
+		}
+
+		/// # Safety
+		///
+		/// This function cannot be called in concurrent contexts.
+		pub unsafe fn entries(&self) -> XStatIter<T> {
+			XStatIter {
+				node: unsafe { *self.base.get() },
+			}
+		}
+	}
+	// yea ts unsafe af tbh
+	unsafe impl<T: 'static + ?Sized> Sync for XStat<T> {}
+	unsafe impl<T: 'static + ?Sized> Send for XStat<T> {}
+	unsafe impl<T: 'static + ?Sized> Sync for XStatEntry<T> {}
+	unsafe impl<T: 'static + ?Sized> Send for XStatEntry<T> {}
+
+	/// An iterator over the items in an [`XStat`].
+	pub struct XStatIter<T: 'static + ?Sized> {
+		node: Option<&'static XStatEntry<T>>,
+	}
+	impl<T: 'static + ?Sized> Iterator for XStatIter<T> {
+		type Item = &'static T;
+
+		fn next(&mut self) -> Option<Self::Item> {
+			let node = self.node?;
+			if let Some(next_node) = unsafe { &*node.next.get() } {
+				self.node = Some(*next_node);
+				Some(&node.value)
+			} else {
+				self.node = None;
+				Some(&node.value)
+			}
+		}
+	}
+
+	/// One entry in an [`XStat`].
+	pub struct XStatEntry<T: 'static + ?Sized> {
+		pub next: UnsafeCell<Option<&'static XStatEntry<T>>>,
+		pub value: T,
+	}
+	impl<T: 'static> XStatEntry<T> {
+		pub fn new(value: T) -> Self {
+			Self {
+				next: UnsafeCell::new(None),
+				value,
+			}
+		}
+	}
+}
+
+pub mod reflect;

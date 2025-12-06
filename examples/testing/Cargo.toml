@@ -9,3 +9,8 @@ crux = { workspace = true, features = [
 	"logging-panic-handler",
 	"global-os-allocator",
 ] }
+crux-macros.workspace = true
+
+[build-dependencies.crux-build]
+workspace = true
+features = ["bin"]

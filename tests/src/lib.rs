@@ -10,7 +10,7 @@ use crux::prelude::*;
 #[test]
 fn log_macro() {
 	use crux::{
-		lang::ownership::Cow,
+		lang::Cow,
 		logging::{Log, LogLevel, mklog},
 	};
 	const MODULE_PATH: &str = crux::lang::module_path!();
@@ -41,8 +41,9 @@ fn log_macro() {
 
 #[test]
 #[allow(clippy::assertions_on_constants)]
+#[allow(clippy::eq_op)]
 fn integer_trait() {
-	use crux::num::Integer;
+	use crux::lang::Integer;
 
 	assert!(!u8::SIGNED);
 	assert!(i8::SIGNED);
