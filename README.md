@@ -82,25 +82,47 @@ You need to define a [build script](https://doc.rust-lang.org/cargo/reference/bu
 TODO
 ```
 
-Due to Cargo limitations, you need to enable a feature flag in `crux-build` for every crate type you plan on compiling your crate as. If you enable a feature flag for a crate type your crate doesn't have (e.g. enable `example` but have no examples in your crate), Cargo will show an error and refuse to compile. These are the feature flags you need to enable for various crate types:
-
-- `bench`: Enable if you have benchmarks in your crate.
-- `bin`: Enable if you're compiling your crate as an executable.
-- `cdylib`: Enable if you're compiling your crate as a dynamic library.
-- `example`: Enable if you have examples in your crate.
-- `test`: Enable if you have unit tests in your crate.
-
-Finally, make a file named `build.rs` in the same folder that has your `Cargo.toml` file, and call `crux_build::build()` from it:
+Then you need to call `crux-build::build()` from your build script. Due to Cargo limitations, you need to tell `crux-build` which kinds of Cargo targets are in your Cargo package. Here's an example for a crate that only has a binary:
 
 ```rs
+use crux_build::CargoTarget;
+
 fn main() {
-	crux_build::build();
+	crux_build::build(&[CargoTarget::Bin]);
 }
 ```
+
+Or, another example for a binary that also has unit tests:
+
+```rs
+use crux_build::CargoTarget;
+
+fn main() {
+	crux_build::build(&[CargoTarget::Bin, CargoTarget::Test]);
+}
+```
+
+If you pass a target type that your package doesn't have, Cargo will emit an error like this:
+
+```
+error: invalid instruction `cargo::rustc-link-arg-<something>` from build script of `<your-crate> v0.1.0 (/path/to/crate)`
+```
+
+On the other hand, if you don't pass a target type and then try to build that type (e.g. don't pass `CargoTarget::Test` but then run `cargo t`), you'll get a kinda long error that contains text like this:
+
+```
+...
+note: rust-lld: error: undefined symbol: __crux_crate_type
+...
+```
+
+You need to pass a `CargoTarget` if you build your crate as a binary, cdylib, build an example of your crate, or run tests or benchmarks on your crate. Yeah, this is annoying. It's entirely Cargo weirdness, I did my best to work around it ergonomically :')
 
 > Technical Details:
 > 
 > Crux has linker scripts that define several values it uses to determine which kind of binary it's been compiled to (unit test, executable, dynamic library, etc.) and special executable sections used for Crux features. `crux_build::build()` passes additional arguments to Cargo that make it use these linker scripts.
+>
+> Some of those arguments are for specific Cargo targets (e.g. when a crate is compiled as a cdylib vs when benchmarks are run on it). However, Cargo is very picky about those arguments, and throws a hard error if you try to use them on a package that doesn't have that specific target type.
 > 
 > Crux shouldn't interfere with your existing build script, if you have one. If it does, please open an issue and let me know - this step isn't meant to conflict with anything.
 

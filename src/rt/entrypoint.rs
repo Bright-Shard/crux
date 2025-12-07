@@ -18,15 +18,18 @@ use crate::{
 //
 //
 
+#[cfg(feature = "main")]
 // Main function defined by whatever binary is using crux.
 unsafe extern "Rust" {
 	safe fn crux_main();
 }
 fn call_main(_: StartupHookInfo) {
+	#[cfg(feature = "main")]
 	crux_main();
 }
 hook! {
-	/// Calls the user-defined `crux_main` function.
+	/// If the crate feature `main` is enabled, calls the user-defined
+	/// `crux_main` function. Otherwise does nothing.
 	event: crate::events::startup,
 	func: call_main,
 	constraints: [

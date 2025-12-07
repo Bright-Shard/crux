@@ -6,6 +6,5 @@ edition = "2024"
 [dependencies]
 crux.workspace = true
 
-[build-dependencies.crux-build]
-workspace = true
-features = ["bin"]
+[build-dependencies]
+crux-build.workspace = true

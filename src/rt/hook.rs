@@ -2,12 +2,7 @@
 //! your program's lifecycle - for example, just after Crux loads, but before
 //! the main function is called, or right before your program exits.
 
-use crate::{
-	crypto::DefaultHashBuilder,
-	data_structures::{Graph, IndexSize},
-	lang::{Func, Ordering, XStat},
-	os::OsAllocator,
-};
+use crate::{lang::XStat, os::OsAllocator};
 
 //
 // Hooks

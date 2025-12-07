@@ -2,7 +2,7 @@
 
 use std::convert::Infallible;
 
-use crate::{AstComponent, Delimiter, Group, Ident, Span, TokenIter, TokenStream, TokenTree};
+use crate::{AstComponent, Delimiter, Group, Ident,  TokenIter, TokenStream, TokenTree};
 
 //
 //

@@ -1,3 +1,5 @@
+use crux_build::CargoTarget;
+
 macro_rules! def_cfg {
 	($([$name:literal: $($cond:tt)*])*) => {
 		$(
@@ -20,4 +22,6 @@ fn main() {
 		["logging": feature = "logging"]
 	};
 	println!("cargo::metadata=ROOT={}", root.display());
+
+	crux_build::build_with_crux_root(root, &[CargoTarget::Test]);
 }

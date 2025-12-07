@@ -394,4 +394,10 @@ pub mod test_harness {
 			hook()
 		}
 	}
+
+	#[cfg(all(feature = "test-harness", test))]
+	#[unsafe(no_mangle)]
+	fn crux_main() {
+		run_all_tests();
+	}
 }

@@ -1,34 +1,39 @@
-pub fn build() {
-	let root = std::path::PathBuf::from(std::env::var("DEP_CRUX_ROOT").unwrap());
+use std::path::Path;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CargoTarget {
+	Bin,
+	CDylib,
+	Example,
+	Test,
+}
+
+pub fn build(targets: &[CargoTarget]) {
+	let root = std::env::var("DEP_CRUX_ROOT").unwrap();
+	build_with_crux_root(Path::new(&root), targets);
+}
+
+pub fn build_with_crux_root(root: &Path, targets: &[CargoTarget]) {
 	let link_scripts = root.join("link-scripts");
 
-	println!(
-		"cargo::rustc-link-arg=-T{}",
-		link_scripts.join("default.ld").display()
-	);
-	#[cfg(feature = "bench")]
-	println!(
-		"cargo::rustc-link-arg-benches=-T{}",
-		link_scripts.join("bench.ld").display()
-	);
-	#[cfg(feature = "bin")]
-	println!(
-		"cargo::rustc-link-arg-bins=-T{}",
-		link_scripts.join("bin.ld").display()
-	);
-	#[cfg(feature = "cdylib")]
-	println!(
-		"cargo::rustc-link-arg-cdylib=-T{}",
-		link_scripts.join("cdylib.ld").display()
-	);
-	#[cfg(feature = "example")]
-	println!(
-		"cargo::rustc-link-arg-examples=-T{}",
-		link_scripts.join("example.ld").display()
-	);
-	#[cfg(feature = "test")]
-	println!(
-		"cargo::rustc-link-arg-tests=-T{}",
-		link_scripts.join("test.ld").display()
-	);
+	let link = |ty: &'static str, script: &'static str| {
+		println!(
+			"cargo::rustc-link-arg{ty}=-T{}",
+			link_scripts.join(script).display()
+		);
+	};
+
+	link("", "default.ld");
+	for ty in targets {
+		match ty {
+			CargoTarget::Bin => link("-bins", "bin.ld"),
+			CargoTarget::CDylib => link("-cdylib", "cdylib.ld"),
+			CargoTarget::Example => link("-example", "example.ld"),
+			CargoTarget::Test => {
+				// Broken: https://github.com/rust-lang/cargo/issues/10937
+				// link("test", "test.ld");
+				link("", "test-workaround.ld");
+			}
+		}
+	}
 }

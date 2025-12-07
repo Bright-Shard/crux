@@ -1,3 +1,5 @@
+use crux_build::CargoTarget;
+
 fn main() {
-	crux_build::build();
+	crux_build::build(&[CargoTarget::Bin]);
 }

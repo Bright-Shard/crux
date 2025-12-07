@@ -4,6 +4,14 @@ version = "0.1.0"
 edition = "2024"
 links = "crux"
 
+
+
+#
+# WORKSPACE SETTINGS
+#
+
+
+
 [workspace]
 members = [
 	"crates/crux-build",
@@ -20,6 +28,14 @@ crux-macros.path = "crates/crux-macros"
 crux-build.path = "crates/crux-build"
 crux-rust-ast.path = "crates/crux-rust-ast"
 
+
+
+#
+# CRUX CRATE SETTINGS
+#
+
+
+
 [lib]
 harness = false
 
@@ -30,6 +46,9 @@ hashbrown = { version = "0.15", default-features = false, features = [
 	"nightly",
 ] }
 crux-macros.workspace = true
+
+[build-dependencies]
+crux-build.workspace = true
 
 [target.'cfg(target_family = "unix")'.dependencies]
 # libc constants can change from platform to platform, so instead of trying to
@@ -42,9 +61,13 @@ panic = "abort"
 [profile.release]
 panic = "abort"
 
+
+
 #
 # CRUX FEATURE FLAGS & DOCUMENTATION
 #
+
+
 
 [features]
 default = [
@@ -53,7 +76,8 @@ default = [
 	"logging",
 	"term",
 	"concurrency",
-	"test-harness"
+	"test-harness",
+	"main"
 ]
 # Registers crux::os::mem::OsAllocator as the global allocator.
 global-os-allocator = []
@@ -73,3 +97,5 @@ term = []
 concurrency = []
 # Provides a testing harness for `cargo t` when compiled in test mode.
 test-harness = []
+# Lets crates define a `crux_main` function that gets executed at startup.
+main = []

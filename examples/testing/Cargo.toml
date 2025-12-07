@@ -11,6 +11,5 @@ crux = { workspace = true, features = [
 ] }
 crux-macros.workspace = true
 
-[build-dependencies.crux-build]
-workspace = true
-features = ["bin"]
+[build-dependencies]
+crux-build.workspace = true

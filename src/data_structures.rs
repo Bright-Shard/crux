@@ -1,6 +1,5 @@
 //! Structures for storing and organizing data.
 
-pub mod graph;
 pub mod sized_vec;
 
 pub use self::{
@@ -8,7 +7,6 @@ pub use self::{
 	binary_heap::BinaryHeap,
 	btree_map::BTreeMap,
 	btree_set::BTreeSet,
-	graph::{Graph, GraphNode},
 	hash_map::HashMap,
 	hash_set::HashSet,
 	hash_table::HashTable,

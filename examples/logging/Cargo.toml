@@ -10,6 +10,5 @@ crux = { workspace = true, features = [
 	"global-os-allocator",
 ] }
 
-[build-dependencies.crux-build]
-workspace = true
-features = ["bin"]
+[build-dependencies]
+crux-build.workspace = true
