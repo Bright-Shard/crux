@@ -5,15 +5,13 @@ on: [push, workflow_dispatch]
 jobs:
   Documentation-Tests:
     runs-on: ubuntu-latest
-    env:
-      RUSTDOCFLAGS: -D warnings
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install Rust Nightly
         run: rustup install
       - name: Cargo Doc
-        run: cargo doc --document-private-items
+        run: ./bin/doctests.sh
 
   Linux-Tests:
     runs-on: ubuntu-latest
@@ -50,4 +48,4 @@ jobs:
       - name: Install Rust Nightly
         run: rustup install
       - name: Cargo Test
-        run: cargo test -p crux-macros -p crux-macros-impl -p crux-rust-ast
+        run: ./bin/macro-tests.sh

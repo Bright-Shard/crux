@@ -2,7 +2,7 @@
 
 use std::convert::Infallible;
 
-use crate::{AstComponent, Delimiter, Group, Ident,  TokenIter, TokenStream, TokenTree};
+use crate::{AstComponent, Delimiter, Group, Ident, TokenIter, TokenStream, TokenTree};
 
 //
 //
@@ -23,7 +23,7 @@ pub enum Mutability {
 
 /// The `pub` keyword - controls which modules can access an item.
 ///
-/// See: https://doc.rust-lang.org/reference/visibility-and-privacy.html
+/// See: <https://doc.rust-lang.org/reference/visibility-and-privacy.html>
 #[derive(Clone, Debug)]
 pub enum Visibility {
 	/// The item was declared public with `pub`.
@@ -128,7 +128,7 @@ pub struct WhereClause {}
 
 /// An attribute macro on a Rust item, e.g. `#[derive(Debug)]`.
 ///
-/// See: https://doc.rust-lang.org/reference/attributes.html
+/// See: <https://doc.rust-lang.org/reference/attributes.html>
 #[derive(Debug)]
 pub struct Attribute {
 	/// The name of the macro, e.g. `derive` for `#[derive(Debug)]`.
@@ -319,7 +319,7 @@ pub enum Type {
 /// - `struct KeyedStruct { field: SomeType }`
 /// - `struct PitaToParse<P: 'static + SomeTrait>{ field: P }`
 ///
-/// See: https://doc.rust-lang.org/reference/items/structs.html
+/// See: <https://doc.rust-lang.org/reference/items/structs.html>
 #[derive(Debug)]
 pub struct Struct {
 	pub kind: StructKind,

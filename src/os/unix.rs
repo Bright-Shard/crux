@@ -69,19 +69,14 @@ bitset! {
 		ASYNC = libc::O_ASYNC,
 		CLOEXEC = libc::O_CLOEXEC,
 		CREAT = libc::O_CREAT,
-		DIRECT = libc::O_DIRECT,
 		DIRECTORY = libc::O_DIRECTORY,
 		DSYNC = libc::O_DSYNC,
 		EXCL = libc::O_EXCL,
-		LARGEFILE = libc::O_LARGEFILE,
-		NOATIME = libc::O_NOATIME,
 		NOCTTY = libc::O_NOCTTY,
 		NOFOLLOW = libc::O_NOFOLLOW,
 		NONBLOCK = libc::O_NONBLOCK,
 		NDELAY = libc::O_NDELAY,
-		PATH = libc::O_PATH,
 		SYNC = libc::O_SYNC,
-		TMPFILE = libc::O_TMPFILE,
 		TRUNC = libc::O_TRUNC
 	}
 }

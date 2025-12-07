@@ -57,9 +57,15 @@ libc = { version = "0.2", default-features = false, features = [] }
 
 [profile.dev]
 panic = "abort"
-
 [profile.release]
 panic = "abort"
+
+[profile.dev-unwind]
+inherits = "dev"
+panic = "unwind"
+[profile.release-unwind]
+inherits = "release"
+panic = "unwind"
 
 
 
