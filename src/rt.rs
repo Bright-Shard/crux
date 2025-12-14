@@ -24,6 +24,8 @@ pub mod backtrace;
 pub mod entrypoint;
 pub mod hook;
 
+use core::hash::Hasher;
+
 #[cfg(target_os = "windows")]
 use crate::mem::NonNull;
 use crate::{
@@ -109,6 +111,10 @@ pub fn info() -> &'static RuntimeInfo {
 #[crate::os::mem::global_allocator]
 pub static GLOBAL_OS_ALLOCATOR: crate::os::mem::OsAllocator = crate::os::mem::OsAllocator;
 
+#[cfg(all(feature = "logging-panic-handler", feature = "std-compat"))]
+compile_error!(
+	"Cannot use the logging-panic-handler with std-compat because std brings its own panic handler."
+);
 #[cfg_attr(feature = "logging-panic-handler", panic_handler)]
 pub fn logging_panic_handler(info: &crate::lang::panic::PanicInfo) -> ! {
 	crate::logging::fatal!("{}", info);
@@ -134,8 +140,7 @@ pub fn logging_panic_handler(info: &crate::lang::panic::PanicInfo) -> ! {
 ///
 /// [`log`]: crate::logging::log
 /// [`fatal`]: crate::logging::fatal
-pub static mut LOGGER: &'static dyn SyncLogger =
-	&crate::logging::StdoutLogger::new(crate::logging::colour_formatter);
+pub static mut LOGGER: &'static dyn SyncLogger = &crate::logging::StdoutLogger::default();
 /// Sends a log to the global [`LOGGER`] instance.
 pub fn emit_log(log: Log) {
 	unsafe { &*addr_of_mut!(LOGGER) }.log(log);
@@ -364,6 +369,46 @@ macro_rules! register_ini_function {
 	};
 }
 pub use crate::register_ini_function;
+
+//
+//
+// Lazy statics
+//
+//
+
+#[macro_export]
+macro_rules! lazy_static {
+	(
+		$(#[doc = $doc:literal])*
+		$(pub)? static $name:ident: $ty:ty;
+		fn load() -> $ty2:ty {
+			$($body:tt)*
+		}
+	) => {
+		mod $name {
+			use super::*;
+
+			fn load() {
+				fn inner() -> $ty2 {
+					$($body)*
+				}
+
+				unsafe { *$crate::lang::addr_of_mut!($name) = inner() };
+			}
+
+			$crate::rt::hook::hook! {
+				event: $crate::events::startup,
+				func: load,
+				constraints: [
+					After($crate::hooks::startup_hook),
+					Before($crate::hooks::call_main)
+				]
+			}
+		}
+		$(#[doc = $doc:literal])*
+		$(pub)? static mut $name: $ty = unsafe { $crate::lang::MaybeUninit::uninit().assume_init() };
+	};
+}
 
 //
 //

@@ -3,5 +3,6 @@ build-std = [
 	"compiler_builtins",
 	"core",
 	"alloc",
+	"std"
 ]
 panic-abort-tests = true

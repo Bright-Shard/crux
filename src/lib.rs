@@ -13,7 +13,7 @@
 #![feature(const_default)]
 #![feature(step_trait)]
 #![no_main]
-#![no_std]
+#![cfg_attr(not(feature = "std-compat"), no_std)]
 
 #[cfg(feature = "concurrency")]
 pub mod concurrency;
@@ -27,6 +27,8 @@ pub mod rt;
 #[cfg(feature = "term")]
 pub mod term;
 pub mod test;
+#[cfg(feature = "ui")]
+pub mod ui;
 
 pub extern crate alloc;
 pub extern crate core;
@@ -54,8 +56,8 @@ pub mod prelude {
 			AllocError, Allocator, AsyncFn, AsyncFnMut, AsyncFnOnce, Clone, Copy, Default, Deref,
 			DerefMut, Drop, Eq, Err, Fn, FnMut, FnOnce, From, Into, IntoIterator, Iterator,
 			ManuallyDrop, MaybeUninit, NonNull, NonNullConst, None, Ok, Option, Ord, PartialEq,
-			PartialOrd, Result, Send, Sized, Some, Sync, derive, drop, matches, panic, todo,
-			transmute, transmute_copy, unreachable,
+			PartialOrd, Result, Send, Sized, Some, Sync, TryFrom, TryInto, derive, drop, matches,
+			panic, todo, transmute, transmute_copy, unreachable,
 		},
 		logging::{error, fatal, info, trace, warn},
 		macros::test,
@@ -183,7 +185,9 @@ pub mod text {
 			fmt::{
 				Arguments as FormatArgs, Debug, Display, Write as TextWrite, write as write_fmt,
 			},
-			format_args, stringify,
+			format_args,
+			str::from_utf8 as str_from_utf8,
+			stringify,
 		},
 	};
 

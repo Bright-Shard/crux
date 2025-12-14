@@ -39,7 +39,7 @@ pub mod essential {
 		cfg,
 		clone::Clone,
 		convert::Infallible, // TODO does this belong here?
-		convert::{From, Into},
+		convert::{From, Into, TryFrom, TryInto},
 		default::Default,
 		matches,
 		option::Option::{self, None, Some},

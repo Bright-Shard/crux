@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 
 macro_rules! def {
-	($($(#[doc = $docs:literal])* $kind:ident$(($type:ident))? $macro:ident),*) => {
+	($($(#[doc = $docs:literal])* $kind:ident$(($type:ident))? $macro:ident),* $(,)?) => {
 		$(
 			def!(@$kind$(($type))? $(#[doc = $docs])* $macro);
 		)*
@@ -41,5 +41,5 @@ def! {
 	/// concat_idents!(s t d); // produces `std`
 	/// concat_idents!(s t d)::alloc::String::new();
 	/// ```
-	macro concat_idents
+	macro concat_idents,
 }

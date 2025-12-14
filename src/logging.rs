@@ -198,6 +198,7 @@ pub trait SyncLogger: Logger + Sync {}
 impl<T: Logger + Sync> SyncLogger for T {}
 
 /// Crux's default formatter for displaying [`Log`]s in ANSI colours.
+#[cfg(feature = "term")]
 pub fn colour_formatter(log: Log) -> String {
 	use crate::term::*;
 
@@ -236,9 +237,12 @@ impl StdoutLogger {
 		Self(formatter)
 	}
 }
-impl Default for StdoutLogger {
+impl const Default for StdoutLogger {
 	fn default() -> Self {
-		Self(colour_formatter)
+		#[cfg(feature = "term")]
+		return Self(colour_formatter);
+		#[cfg(not(feature = "term"))]
+		Self(default_formatter)
 	}
 }
 impl Logger for StdoutLogger {

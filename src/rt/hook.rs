@@ -59,7 +59,12 @@ pub struct Hook<F> {
 
 #[macro_export]
 macro_rules! hook {
-	($(#[doc = $doc:literal])* event: $event:path, func: $func:ident, constraints: [$($order:ident($constraint:path),)*]) => {
+	(
+		$(#[doc = $doc:literal])*
+		event: $event:path,
+		func: $func:ident,
+		constraints: [$($order:ident($constraint:path),)*]
+	) => {
 		$(#[doc = $doc])*
 		pub mod $func {
 			use super::*;
@@ -74,8 +79,32 @@ macro_rules! hook {
 				next: $crate::lang::UnsafeCell::new($crate::lang::Option::None),
 				value: $crate::rt::hook::Hook {
 					func: $func,
-					id: unsafe {
-						$crate::rt::hook::HookId::new(0)
+					id: const {
+						let hash = $crate::crypto::sha2_const::Sha256::new()
+							.update(&$crate::lang::line!().to_ne_bytes())
+							.update(&$crate::lang::column!().to_ne_bytes())
+							.update($crate::lang::file!().as_bytes())
+							.update($crate::lang::module_path!().as_bytes())
+							.finalize();
+						let total = u128::from_ne_bytes([
+							hash[0],
+							hash[1],
+							hash[2],
+							hash[3],
+							hash[4],
+							hash[5],
+							hash[6],
+							hash[7],
+							hash[0],
+							hash[1],
+							hash[2],
+							hash[3],
+							hash[4],
+							hash[5],
+							hash[6],
+							hash[7]
+						]);
+						unsafe { $crate::rt::hook::HookId::new(total) }
 					},
 					constraints: CONSTRAINTS
 				},
@@ -152,6 +181,25 @@ impl<F> Event<F> {
 		let mut links = SizedVec::with_allocator(OsAllocator);
 
 		for hook in unsafe { self.0.entries() } {
+			let ptr = hook as *const Hook<_>;
+			let mut t = ptr as usize;
+			while t > 0 {
+				crate::os::write_stdout(&[(t % 10) as u8 + 48]);
+				t /= 10;
+			}
+			crate::os::write_stdout(b"\n");
+			let mut t = hook.id.0;
+			while t > 0 {
+				crate::os::write_stdout(&[(t % 10) as u8 + 48]);
+				t /= 10;
+			}
+			crate::os::write_stdout(b"\ne");
+			let mut t = hooks_stable.len();
+			while t > 0 {
+				crate::os::write_stdout(&[(t % 10) as u8 + 48]);
+				t /= 10;
+			}
+			crate::os::write_stdout(b"\n");
 			stable_idx_map.insert(hook.id, hooks_stable.len());
 			hooks_stable.push(hook);
 		}

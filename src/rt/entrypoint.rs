@@ -19,17 +19,27 @@ use crate::{
 //
 
 #[cfg(feature = "main")]
-// Main function defined by whatever binary is using crux.
 unsafe extern "Rust" {
+	// Main function defined by whatever binary is using crux.
 	safe fn crux_main();
 }
-fn call_main(_: StartupHookInfo) {
+#[cfg(feature = "std-compat")]
+unsafe extern "C" {
+	// Main function defined by Rust's standard library.
+	safe fn main(argc: c_int, argv: *const *const c_char);
+}
+fn call_main(#[allow(dead_code)] info: StartupHookInfo) {
 	#[cfg(feature = "main")]
 	crux_main();
+	#[cfg(feature = "std-compat")]
+	main(info.args.len() as _, info.args as *const [*const u8] as _);
 }
 hook! {
 	/// If the crate feature `main` is enabled, calls the user-defined
-	/// `crux_main` function. Otherwise does nothing.
+	/// `crux_main` function.
+	/// If the crate feature `std-compat` is enabled, calls the Rust standard
+	/// library's main function.
+	/// Otherwise does nothing.
 	event: crate::events::startup,
 	func: call_main,
 	constraints: [
@@ -40,7 +50,7 @@ hook! {
 /// Entrypoint for binaries.
 #[cfg(unix)]
 #[unsafe(no_mangle)]
-extern "C" fn main(argc: c_int, argv: *const *const c_char) -> c_int {
+extern "C" fn __crux_main(argc: c_int, argv: *const *const c_char) -> c_int {
 	use crate::{io::Writer, os::unix::FileDescriptor};
 
 	let args = unsafe { &*crate::lang::slice_from_raw_parts(argv.cast(), argc as usize) };

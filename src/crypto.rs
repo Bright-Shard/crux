@@ -14,6 +14,8 @@ pub mod hash {
 	pub type FoldHasher = <DefaultHashBuilder as BuildHasher>::Hasher;
 }
 
+pub use sha2_const;
+
 // TODO:
 // - RNG
 // - More hash functions

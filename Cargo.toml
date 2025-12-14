@@ -15,10 +15,12 @@ links = "crux"
 [workspace]
 members = [
 	"crates/crux-build",
-	"crates/crux-macros", "crates/crux-macros-impl",
+	"crates/crux-macros",
+	"crates/crux-macros-impl",
 	"crates/crux-rust-ast",
 	"examples/cli",
 	"examples/logging",
+	"examples/std-compat",
 	"examples/testing",
 	"tests",
 ]
@@ -40,12 +42,13 @@ crux-rust-ast.path = "crates/crux-rust-ast"
 harness = false
 
 [dependencies]
-hashbrown = { version = "0.15", default-features = false, features = [
+hashbrown = { version = "0.16", default-features = false, features = [
 	"default-hasher",
 	"inline-more",
 	"nightly",
 ] }
 crux-macros.workspace = true
+sha2-const = "=0.1.2"
 
 [build-dependencies]
 crux-build.workspace = true
@@ -83,7 +86,7 @@ default = [
 	"term",
 	"concurrency",
 	"test-harness",
-	"main"
+	"main",
 ]
 # Registers crux::os::mem::OsAllocator as the global allocator.
 global-os-allocator = []
@@ -99,9 +102,12 @@ safety-checks = []
 logging = []
 # Enables the `term` module.
 term = []
+# Enables the `ui` module (crux's built-in windowing & ui library).
+ui = []
 # Enables the `concurrency` module.
 concurrency = []
 # Provides a testing harness for `cargo t` when compiled in test mode.
 test-harness = []
 # Lets crates define a `crux_main` function that gets executed at startup.
 main = []
+std-compat = []
