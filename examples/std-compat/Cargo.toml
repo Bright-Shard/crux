@@ -1,0 +1,12 @@
+[package]
+name = "std-compat"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies.crux]
+path = "../.."
+default-features = false
+features = ["std-compat"]
+
+[build-dependencies]
+crux-build.workspace = true
