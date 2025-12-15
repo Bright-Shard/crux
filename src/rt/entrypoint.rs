@@ -26,13 +26,14 @@ unsafe extern "Rust" {
 #[cfg(feature = "std-compat")]
 unsafe extern "C" {
 	// Main function defined by Rust's standard library.
-	safe fn main(argc: c_int, argv: *const *const c_char);
+	#[link_name = "__real_main"]
+	safe fn std_main(argc: c_int, argv: *const *const c_char);
 }
 fn call_main(#[allow(dead_code)] info: StartupHookInfo) {
 	#[cfg(feature = "main")]
 	crux_main();
 	#[cfg(feature = "std-compat")]
-	main(info.args.len() as _, info.args as *const [*const u8] as _);
+	std_main(info.args.len() as _, info.args as *const [*const u8] as _);
 }
 hook! {
 	/// If the crate feature `main` is enabled, calls the user-defined
@@ -50,8 +51,12 @@ hook! {
 /// Entrypoint for binaries.
 #[cfg(unix)]
 #[unsafe(no_mangle)]
-extern "C" fn __crux_main(argc: c_int, argv: *const *const c_char) -> c_int {
-	use crate::{io::Writer, os::unix::FileDescriptor};
+extern "C" fn __wrap_main(
+	argc: c_int,
+	argv: *const *const c_char,
+	_envp: *const *const c_char,
+) -> c_int {
+	use crate::{io::Writer, rt::os::unix::FileDescriptor};
 
 	let args = unsafe { &*crate::lang::slice_from_raw_parts(argv.cast(), argc as usize) };
 	match entrypoint(StartupHookInfo { args }) {
@@ -62,7 +67,7 @@ extern "C" fn __crux_main(argc: c_int, argv: *const *const c_char) -> c_int {
 		}
 	}
 
-	let _ = unsafe { crate::os::unix::FileWriter::new(FileDescriptor::STDOUT).flush() };
+	let _ = unsafe { crate::rt::os::unix::FileWriter::new(FileDescriptor::STDOUT).flush() };
 
 	0
 }
@@ -81,7 +86,7 @@ mod library_entrypoint {
 				Ok(()) => {}
 				Err(err) => {
 					println!("Crux CRITICAL ERROR: {}", err.error_msg());
-					crate::os::unix::exit(1);
+					crate::rt::os::unix::exit(1);
 				}
 			}
 		}

@@ -1,6 +1,6 @@
 //! Items for working directly with memory and allocations.
 
-use crate::{lang::*, os};
+use crate::{lang::*, rt::os};
 
 //
 //
@@ -287,10 +287,10 @@ pub fn allocate(amount: MemoryAmount) -> Result<NonNull<()>, ()> {
 			}
 			let mut t = ptr as usize;
 			while t > 0 {
-				crate::os::write_stdout(&[(t % 10) as u8 + 48]);
+				crate::rt::write_stdout(&[(t % 10) as u8 + 48]);
 				t /= 10;
 			}
-			crate::os::write_stdout(b"\n");
+			crate::rt::write_stdout(b"\n");
 			ptr
 		}
 		#[cfg(windows)]

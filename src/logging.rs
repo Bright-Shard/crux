@@ -247,7 +247,7 @@ impl const Default for StdoutLogger {
 }
 impl Logger for StdoutLogger {
 	fn log(&self, log: Log) {
-		crate::os::proc::write_stdout(self.0(log).as_bytes());
+		crate::rt::write_stdout(self.0(log).as_bytes());
 	}
 }
 

@@ -12,7 +12,6 @@
 #![feature(const_convert)]
 #![feature(const_default)]
 #![feature(step_trait)]
-#![no_main]
 #![cfg_attr(not(feature = "std-compat"), no_std)]
 
 #[cfg(feature = "concurrency")]
@@ -22,7 +21,6 @@ pub mod data_structures;
 pub mod ffi;
 pub mod lang;
 pub mod logging;
-pub mod os;
 pub mod rt;
 #[cfg(feature = "term")]
 pub mod term;
@@ -61,7 +59,7 @@ pub mod prelude {
 		},
 		logging::{error, fatal, info, trace, warn},
 		macros::test,
-		os::{
+		rt::{
 			mem::{GlobalAllocator, MemoryAmount, VirtualMemoryArena},
 			proc::{print, println},
 		},

@@ -2,7 +2,7 @@
 
 use crate::{
 	ffi::{CStr, c_char},
-	os,
+	rt::os,
 	text::FormatArgs,
 };
 
@@ -48,7 +48,7 @@ pub fn write_stdout(text: &[u8]) {
 	{
 		use crate::{
 			io::Writer,
-			os::unix::{FileDescriptor, FileWriter},
+			rt::os::unix::{FileDescriptor, FileWriter},
 		};
 
 		unsafe { FileWriter::new(FileDescriptor::STDOUT) }
@@ -67,7 +67,7 @@ pub fn write_stdout_fmt(args: FormatArgs) {
 	{
 		use crate::{
 			io::Writer,
-			os::unix::{FileDescriptor, FileWriter},
+			rt::os::unix::{FileDescriptor, FileWriter},
 		};
 
 		unsafe { FileWriter::new(FileDescriptor::STDOUT) }

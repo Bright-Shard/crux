@@ -26,7 +26,11 @@ pub fn build_with_crux_root(root: &Path, targets: &[CargoTarget]) {
 	link("", "default.ld");
 	for ty in targets {
 		match ty {
-			CargoTarget::Bin => link("-bins", "bin.ld"),
+			CargoTarget::Bin => {
+				link("-bins", "bin.ld");
+				println!("cargo::rustc-link-arg=--for-linker");
+				println!("cargo::rustc-link-arg=--wrap=main");
+			}
 			CargoTarget::CDylib => link("-cdylib", "cdylib.ld"),
 			CargoTarget::Example => link("-example", "example.ld"),
 			CargoTarget::Test => {

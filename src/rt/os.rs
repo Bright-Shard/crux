@@ -1,12 +1,6 @@
 //! Items that interact with the operating system, and FFI bindings to operating
 //! system APIs.
 
-pub use {mem::*, proc::*};
-
-pub mod fs;
-pub mod mem;
-pub mod proc;
-
 //
 //
 // FFI

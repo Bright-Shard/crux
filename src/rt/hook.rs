@@ -2,7 +2,7 @@
 //! your program's lifecycle - for example, just after Crux loads, but before
 //! the main function is called, or right before your program exits.
 
-use crate::{lang::XStat, os::OsAllocator};
+use crate::{lang::XStat, rt::OsAllocator};
 
 //
 // Hooks
@@ -184,22 +184,22 @@ impl<F> Event<F> {
 			let ptr = hook as *const Hook<_>;
 			let mut t = ptr as usize;
 			while t > 0 {
-				crate::os::write_stdout(&[(t % 10) as u8 + 48]);
+				crate::rt::write_stdout(&[(t % 10) as u8 + 48]);
 				t /= 10;
 			}
-			crate::os::write_stdout(b"\n");
+			crate::rt::write_stdout(b"\n");
 			let mut t = hook.id.0;
 			while t > 0 {
-				crate::os::write_stdout(&[(t % 10) as u8 + 48]);
+				crate::rt::write_stdout(&[(t % 10) as u8 + 48]);
 				t /= 10;
 			}
-			crate::os::write_stdout(b"\ne");
+			crate::rt::write_stdout(b"\ne");
 			let mut t = hooks_stable.len();
 			while t > 0 {
-				crate::os::write_stdout(&[(t % 10) as u8 + 48]);
+				crate::rt::write_stdout(&[(t % 10) as u8 + 48]);
 				t /= 10;
 			}
-			crate::os::write_stdout(b"\n");
+			crate::rt::write_stdout(b"\n");
 			stable_idx_map.insert(hook.id, hooks_stable.len());
 			hooks_stable.push(hook);
 		}

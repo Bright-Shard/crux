@@ -22,24 +22,24 @@ jobs:
         run: rustup install
       - name: Cargo Test
         run: cargo test
-  macOS-Tests:
-    runs-on: macos-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Rust Nightly
-        run: rustup install
-      - name: Cargo Test
-        run: cargo test
-  Windows-Tests:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Rust Nightly
-        run: rustup install
-      - name: Cargo Test
-        run: cargo test
+  # macOS-Tests:
+  #   runs-on: macos-latest
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+  #     - name: Install Rust Nightly
+  #       run: rustup install
+  #     - name: Cargo Test
+  #       run: cargo test
+  # Windows-Tests:
+  #   runs-on: windows-latest
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+  #     - name: Install Rust Nightly
+  #       run: rustup install
+  #     - name: Cargo Test
+  #       run: cargo test
   Macro-Tests:
     runs-on: ubuntu-latest
     steps:

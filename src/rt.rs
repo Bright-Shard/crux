@@ -20,11 +20,11 @@
 //!    [`GLOBAL_OS_ALLOCATOR`].
 //! 4. Global program logging; see [`LOGGER`].
 
-pub mod backtrace;
 pub mod entrypoint;
 pub mod hook;
-
-use core::hash::Hasher;
+pub mod mem;
+pub mod os;
+pub mod proc;
 
 #[cfg(target_os = "windows")]
 use crate::mem::NonNull;
@@ -36,12 +36,11 @@ use crate::{
 		panic,
 	},
 	logging::{Log, SyncLogger},
-	os,
 };
 
 #[cfg(all(test, feature = "test-harness"))]
 pub use test_harness::*;
-pub use {backtrace::*, entrypoint::*, hook::*};
+pub use {entrypoint::*, hook::*, mem::*, os::*, proc::*};
 
 //
 //
@@ -108,20 +107,23 @@ pub fn info() -> &'static RuntimeInfo {
 }
 
 #[cfg(feature = "global-os-allocator")]
-#[crate::os::mem::global_allocator]
-pub static GLOBAL_OS_ALLOCATOR: crate::os::mem::OsAllocator = crate::os::mem::OsAllocator;
+#[os::mem::global_allocator]
+pub static GLOBAL_OS_ALLOCATOR: os::mem::OsAllocator = os::mem::OsAllocator;
 
 #[cfg(all(feature = "logging-panic-handler", feature = "std-compat"))]
 compile_error!(
-	"Cannot use the logging-panic-handler with std-compat because std brings its own panic handler."
+	"Crux: You can't enable the crate feature `logging-panic-handler` and the crate feature `std-compat`. `std` brings its own panic handler, and the logging panic handler would conflict with that."
 );
-#[cfg_attr(feature = "logging-panic-handler", panic_handler)]
+#[cfg_attr(
+	all(not(feature = "std-compat"), feature = "logging-panic-handler"),
+	panic_handler
+)]
 pub fn logging_panic_handler(info: &crate::lang::panic::PanicInfo) -> ! {
 	crate::logging::fatal!("{}", info);
 
 	#[cfg(supported_os)]
 	{
-		crate::os::proc::exit_with_code(101)
+		crate::rt::proc::exit_with_code(101)
 	}
 	#[cfg(not(supported_os))]
 	{
