@@ -107,8 +107,8 @@ pub fn info() -> &'static RuntimeInfo {
 }
 
 #[cfg(feature = "global-os-allocator")]
-#[os::mem::global_allocator]
-pub static GLOBAL_OS_ALLOCATOR: os::mem::OsAllocator = os::mem::OsAllocator;
+#[mem::global_allocator]
+pub static GLOBAL_OS_ALLOCATOR: mem::OsAllocator = mem::OsAllocator;
 
 #[cfg(all(feature = "logging-panic-handler", feature = "std-compat"))]
 compile_error!(

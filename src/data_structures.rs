@@ -66,7 +66,7 @@ pub mod arena {
 	use crate::{
 		data_structures::IndexSize,
 		lang::UnsafeCell,
-		rt::os::mem::{ArenaPreallocationError, MemoryAmount, VirtualMemoryArena},
+		rt::mem::{ArenaPreallocationError, MemoryAmount, VirtualMemoryArena},
 	};
 
 	/// A vector backed by an arena allocator.
