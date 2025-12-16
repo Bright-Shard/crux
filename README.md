@@ -45,8 +45,15 @@ The simplest way to use Crux is with `std` compatibility. Crux is able to work w
 You need to define a [build script](https://doc.rust-lang.org/cargo/reference/build-scripts.html) that calls a function provided by the [`crux-build` crate](crates/crux-build). First, add a compile-time dependency for `crux-build` in `Cargo.toml`, like so:
 
 ```toml
-TODO
+[build-dependencies]
+crux-build = { git = "https://github.com/bright-shard/crux" }
 ```
+
+> You'll likely want to also specify a commit, like so:
+> `crux-build = { git = "...", rev = "<commit hash goes here>" }`
+> You can then update the `rev` when a new commit gets pushed to tell Cargo to use a new `crux-build` version.
+> 
+> Without this Cargo caches the latest version of `crux-build` that it's previously cloned, so even if a new commit gets pushed to `crux-build`, Cargo may use its cache for your local project and not use the updated version of `crux-build`.
 
 Then you need to call `crux-build::build()` from your build script. Due to Cargo limitations, you need to tell `crux-build` which kinds of Cargo targets are in your Cargo package. Here's an example for a crate that only has a binary:
 
