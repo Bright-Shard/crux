@@ -285,12 +285,6 @@ pub fn allocate(amount: MemoryAmount) -> Result<NonNull<()>, ()> {
 			if ptr == libc::MAP_FAILED {
 				return Err(());
 			}
-			let mut t = ptr as usize;
-			while t > 0 {
-				crate::rt::write_stdout(&[(t % 10) as u8 + 48]);
-				t /= 10;
-			}
-			crate::rt::write_stdout(b"\n");
 			ptr
 		}
 		#[cfg(windows)]

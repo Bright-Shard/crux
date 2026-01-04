@@ -56,7 +56,7 @@ crux-build.workspace = true
 [target.'cfg(target_family = "unix")'.dependencies]
 # libc constants can change from platform to platform, so instead of trying to
 # track those ourselves we let the Rust team handle it
-libc = { version = "0.2", default-features = false, features = [] }
+libc = { version = "0", default-features = false, features = [] }
 
 [profile.dev]
 panic = "abort"
@@ -110,4 +110,6 @@ concurrency = []
 test-harness = []
 # Lets crates define a `crux_main` function that gets executed at startup.
 main = []
+# Lets Crux crates also work with Rust's standard library, and lets you use a
+# main function as normal (instead of needing to define a `crux_main` function).
 std-compat = []
