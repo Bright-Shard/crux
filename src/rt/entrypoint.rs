@@ -29,7 +29,7 @@ unsafe extern "C" {
 	#[link_name = "__real_main"]
 	safe fn std_main(argc: c_int, argv: *const *const c_char);
 }
-fn call_main(#[allow(dead_code)] info: StartupHookInfo) {
+fn call_main(#[allow(unused)] info: StartupHookInfo) {
 	#[cfg(feature = "main")]
 	crux_main();
 	#[cfg(feature = "std-compat")]

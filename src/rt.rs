@@ -40,7 +40,7 @@ use crate::{
 
 #[cfg(all(test, feature = "test-harness"))]
 pub use test_harness::*;
-pub use {entrypoint::*, hook::*, mem::*, os::*, proc::*};
+pub use {dl::*, entrypoint::*, hook::*, mem::*, os::*, proc::*};
 
 //
 //
@@ -446,5 +446,87 @@ pub mod test_harness {
 	#[unsafe(no_mangle)]
 	fn crux_main() {
 		run_all_tests();
+	}
+}
+
+//
+//
+// Dynamic Code Loading
+//
+//
+
+/// Code for loading dynamic libraries.
+pub mod dl {
+	use crate::{
+		ffi::{CStr, c_void},
+		rt::os,
+	};
+
+	pub struct DynamicLibrary {
+		raw_handle: usize,
+	}
+	impl DynamicLibrary {
+		/// The raw operating system handle to the opened dynamic library.
+		pub fn raw_handle(&self) -> usize {
+			self.raw_handle
+		}
+
+		/// Create a [`DynamicLibrary`] from a handle to an already-opened
+		/// dynamic library.
+		///
+		///
+		/// # Safety
+		///
+		/// The raw handle must be a valid handle to a dynamic library that's
+		/// already been opened. Note that [`DynamicLibrary`] will automatically
+		/// close this handle when it's dropped.
+		pub unsafe fn from_raw_handle(raw_handle: usize) -> Self {
+			Self { raw_handle }
+		}
+
+		/// Attempt to get a symbol from the opened dynamic library.
+		///
+		/// Because dynamic libraries can hold different types of functions or
+		/// statics, this function doesn't know what type of data you're trying
+		/// to access, and just returns a pointer to it. If it's a function, you
+		/// can cast the pointer to a function pointer. If it's a static, you
+		/// can dereference the pointer to read/write its value.
+		///
+		///
+		/// # Safety
+		///
+		/// When you load a symbol by its name, Crux only guarantees that
+		/// *something* exists with that name in the library you loaded it from.
+		/// There's no checks to make sure it has the type or function signature
+		/// you expect; nor that the value is safe to access; nor even that the
+		/// value is still alive/allocated and accessible.
+		///
+		/// Basically, all bets are off, and you're solely responsible for
+		/// whatever happens when you use the pointer returned from this
+		/// function.
+		pub unsafe fn get_symbol_raw(&self, symbol: &CStr) -> Option<NonNull<c_void>> {
+			#[cfg(unix)]
+			unsafe {
+				os::unix::dlsym(
+					self.to_handle(),
+					NonNullConst::new_unchecked(symbol.as_ptr().cast()),
+				)
+			}
+		}
+
+		#[cfg(unix)]
+		#[inline(always)]
+		fn to_handle(&self) -> NonNull<c_void> {
+			unsafe { NonNull::new_unchecked(self.raw_handle as *mut _) }
+		}
+	}
+	impl Drop for DynamicLibrary {
+		fn drop(&mut self) {
+			// TODO: Error handling
+			#[cfg(unix)]
+			unsafe {
+				os::unix::dlclose(self.to_handle())
+			};
+		}
 	}
 }

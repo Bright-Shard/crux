@@ -11,6 +11,13 @@ use crate::{lang::XStat, rt::OsAllocator};
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub struct HookId(u128);
 impl HookId {
+	/// Create a new unique ID for a hook.
+	///
+	///
+	/// # Safety
+	///
+	/// All code assumes that hook IDs are unique to one hook. You're
+	/// responsible for guaranteeing this hook ID is unique.
 	pub const unsafe fn new(raw: u128) -> Self {
 		Self(raw)
 	}
@@ -155,6 +162,7 @@ impl<F> const Default for Event<F> {
 	}
 }
 
+/// An error from [`Event::solve`].
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum EventSolvingError {
 	/// Item has to go before and after itself.
@@ -163,6 +171,15 @@ pub enum EventSolvingError {
 	Cyclical,
 }
 impl<F> Event<F> {
+	/// Solve the event and return its function hooks in the order they should
+	/// be called.
+	///
+	///
+	/// # Safety
+	///
+	/// This method reads from the [`Event`] value. You're responsible for
+	/// ensuring nothing is writing to the [`Event`] at the same time this is
+	/// running, since that'd cause a race condition.
 	pub unsafe fn solve(
 		&self,
 	) -> Result<SizedVec<&'static F, u16, OsAllocator>, EventSolvingError> {

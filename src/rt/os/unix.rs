@@ -110,3 +110,23 @@ unsafe extern "C" {
 	pub unsafe fn fcntl(fd: FileDescriptor, op: c_int, ...) -> c_int;
 	pub safe fn exit(status: c_int) -> !;
 }
+#[link(name = "dl")]
+unsafe extern "C" {
+	pub unsafe fn dlopen(path: NonNullConst<c_char>, flags: c_int) -> Option<NonNull<c_void>>;
+	pub unsafe fn dlclose(handle: NonNull<c_void>) -> c_int;
+	// The current signature here implies that if dlsym returns `None` then the
+	// symbol wasn't found.
+	// Technically symbols can be placed at NULL, so this should really return
+	// `*mut c_void`. If it's null you then have to perform another check to see
+	// if the symbol was found or not.
+	// But... null pointers aren't valid in Rust, and I doubt any library will
+	// actually place a symbol at address 0 since pretty much everyone uses
+	// null pointers to represent nothing or an error. So we'll just assume a
+	// null pointer means "symbol not found".
+	//
+	// See NOTES: https://man7.org/linux/man-pages/man3/dlsym.3.html
+	pub unsafe fn dlsym(
+		handle: NonNull<c_void>,
+		symbol: NonNullConst<c_char>,
+	) -> Option<NonNull<c_void>>;
+}

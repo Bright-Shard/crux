@@ -104,10 +104,10 @@ pub use print;
 #[macro_export]
 macro_rules! println {
 	($str:literal) => {
-		$crate::os::proc::write_stdout_fmt($crate::text::format_args!($crate::text::concat!($str, "\n")))
+		$crate::rt::proc::write_stdout_fmt($crate::text::format_args!($crate::text::concat!($str, "\n")))
 	};
 	($str:literal, $($arg:expr),*) => {
-		$crate::os::proc::write_stdout_fmt($crate::text::format_args!($crate::text::concat!($str, "\n"), $($arg),*))
+		$crate::rt::proc::write_stdout_fmt($crate::text::format_args!($crate::text::concat!($str, "\n"), $($arg),*))
 	};
 }
 pub use println;
